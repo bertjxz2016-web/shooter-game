@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Arena Wheel FPS</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="game-wrap" aria-label="Arena Wheel FPS game">
+      <canvas id="gameCanvas" width="1280" height="720"></canvas>
+
+      <div class="top-hud">
+        <div class="bars">
+          <label>
+            <span>Health</span>
+            <meter id="healthMeter" min="0" max="150" value="150"></meter>
+            <b id="healthText">150</b>
+          </label>
+          <label>
+            <span>Exhaustion</span>
+            <meter id="staminaMeter" min="0" max="150" value="150"></meter>
+            <b id="staminaText">150</b>
+          </label>
+        </div>
+        <div class="score-strip">
+          <span id="modeText">Mode: Free for all</span>
+          <span id="mapText">Map: Spin first</span>
+          <span id="clockText">00:00</span>
+          <span id="resourceText">Diamonds 12 | Level 1 | Shards 0</span>
+        </div>
+      </div>
+
+      <div class="center-reticle" aria-hidden="true"></div>
+      <div id="hitFlash" class="hit-flash"></div>
+
+      <aside class="left-panel">
+        <div class="panel-block wheel-block">
+          <h1>Arena Wheel FPS</h1>
+          <div id="wheel" class="wheel">
+            <span id="wheelLabel">SPIN</span>
+          </div>
+          <button id="spinMapBtn" type="button">Spin map</button>
+          <select id="modeSelect" aria-label="Game mode">
+            <option>1v1 battle</option>
+            <option>Team battle 4v4</option>
+            <option>Team battle 6v6</option>
+            <option selected>Free for all (6 people)</option>
+            <option>Free for all (8 people)</option>
+            <option>Bedwars with guns (3v3v3v3)</option>
+          </select>
+        </div>
+
+        <div class="panel-block">
+          <h2>Loadout</h2>
+          <p id="loadoutText">Slingshot + Cloth Shirt</p>
+          <button id="shopBtn" type="button">Open shop</button>
+          <button id="dailyBtn" type="button">Daily spin</button>
+        </div>
+
+        <div class="panel-block instructions">
+          <h2>Controls</h2>
+          <p>WASD or arrows move, mouse looks, Space jumps, R reloads, mouse click or F shoots.</p>
+          <p>1-9 uses inventory slots. Rest by standing still. Drink water to restore 60 exhaustion.</p>
+        </div>
+      </aside>
+
+      <aside class="right-panel">
+        <div class="panel-block compact">
+          <h2>Match</h2>
+          <p id="enemyText">Opponents: 0</p>
+          <p id="weaponText">Weapon: Slingshot</p>
+          <p id="ammoText">Ammo: 1 / 1</p>
+          <p id="trapText">Mines 5 | Holes 8 | Pitfalls 3</p>
+        </div>
+        <div class="panel-block inventory">
+          <h2>Inventory</h2>
+          <div id="inventoryGrid" class="inventory-grid"></div>
+        </div>
+        <div class="panel-block compact">
+          <h2>Rewards</h2>
+          <p id="rewardText">Win: diamonds, level XP, and survival bonuses.</p>
+        </div>
+      </aside>
+
+      <section class="chat" aria-label="Game chat">
+        <div id="chatLog"></div>
+      </section>
+
+      <section id="overlay" class="overlay">
+        <div class="modal">
+          <h2 id="overlayTitle">Spin the wheel</h2>
+          <p id="overlayBody">Choose a game mode, spin for a background, then start the match. Eliminate every opponent to win. If your health reaches zero, you lose.</p>
+          <div class="modal-actions">
+            <button id="startBtn" type="button">Start match</button>
+            <button id="restartBtn" type="button">Restart</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="shopOverlay" class="overlay hidden">
+        <div class="modal shop-modal">
+          <div class="modal-head">
+            <h2>Shop</h2>
+            <button id="closeShopBtn" type="button">Close</button>
+          </div>
+          <p>Buy stronger weapons and armor with diamonds and levels earned in matches.</p>
+          <div class="shop-columns">
+            <div>
+              <h3>Guns</h3>
+              <div id="gunList" class="shop-list"></div>
+            </div>
+            <div>
+              <h3>Armor</h3>
+              <div id="armorList" class="shop-list"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </section>
+  </main>
+  <script src="game.js"></script>
+</body>
+</html>
