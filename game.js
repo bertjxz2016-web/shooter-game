@@ -315,6 +315,8 @@ function spawnEnemies(size) {
       speed: rand(42, 75),
       shootCd: rand(.2, 1.6),
       pathCd: 0,
+      targetCd: rand(0, .8),
+      targetId: null,
       alive: true,
       trapped: 0
     });
@@ -393,7 +395,7 @@ function shotEndpoint(origin, angle, range) {
   };
 }
 
-function spawnTracer(from, to, color, hit, incoming = false) {
+function spawnTracer(from, to, color, hit, incoming = false, worldShot = incoming) {
   const lifetime = incoming ? .34 : .24;
   state.tracers.push({
     from: { ...from },
@@ -401,6 +403,7 @@ function spawnTracer(from, to, color, hit, incoming = false) {
     color,
     hit,
     incoming,
+    worldShot,
     life: lifetime,
     maxLife: lifetime,
     width: incoming ? 4 : 5
@@ -550,25 +553,61 @@ function findTargetInCrosshair(range) {
   return best;
 }
 
-function enemyShoot(enemy, dt) {
-  if (!enemy.alive || enemy.trapped > 0) return;
+function chooseEnemyTarget(enemy) {
+  const rivals = state.enemies.filter(candidate => candidate.alive && candidate !== enemy);
+  const pool = rivals.length && Math.random() < .72
+    ? rivals
+    : [state.player, ...rivals];
+  const target = pool
+    .map(candidate => ({
+      candidate,
+      score: dist(enemy, candidate) * rand(.78, 1.28)
+    }))
+    .sort((a, b) => a.score - b.score)[0]?.candidate || state.player;
+  enemy.targetId = target === state.player ? "player" : target.id;
+  enemy.targetCd = rand(.85, 1.9);
+  return target;
+}
+
+function resolveEnemyTarget(enemy) {
+  if (enemy.targetId === "player") return state.player;
+  return state.enemies.find(candidate => candidate.alive && candidate.id === enemy.targetId) || null;
+}
+
+function enemyShoot(enemy, target, dt) {
+  if (!enemy.alive || enemy.trapped > 0 || !target) return;
   enemy.shootCd -= dt;
-  const d = Math.hypot(enemy.x - state.player.x, enemy.y - state.player.y);
+  const targetIsPlayer = target === state.player;
+  const d = dist(enemy, target);
   const w = weapons[enemy.weaponRank - 1];
   if (d < w.range * .75 && enemy.shootCd <= 0) {
     enemy.shootCd = rand(.65, 1.4) + 1 / w.rate;
     const didHit = Math.random() > clamp(d / w.range, .12, .82);
-    const target = didHit
-      ? { x: state.player.x, y: state.player.y }
-      : { x: state.player.x + rand(-150, 150), y: state.player.y + rand(-150, 150) };
-    spawnTracer(enemy, target, didHit ? "#ff7b72" : "#ffb86b", didHit, true);
+    const shotTarget = didHit
+      ? { x: target.x, y: target.y }
+      : { x: target.x + rand(-150, 150), y: target.y + rand(-150, 150) };
+    spawnTracer(enemy, shotTarget, didHit ? "#ff7b72" : "#ffb86b", didHit, targetIsPlayer, true);
     playShotSound(enemy.weaponRank, true);
     if (didHit) {
-      spawnImpact(state.player.x + Math.cos(enemy.angle) * 36, state.player.y + Math.sin(enemy.angle) * 36, "#ff7b72", 9);
-      takeDamage(w.damage * rand(.22, .44), enemy.id);
+      spawnImpact(target.x, target.y, targetIsPlayer ? "#ff7b72" : "#ffd27a", 9);
+      if (targetIsPlayer) {
+        takeDamage(w.damage * rand(.22, .44), enemy.id);
+      } else {
+        const targetArmor = armors[target.armor - 1] || armors[0];
+        const damage = w.damage * rand(.28, .52) * (1 - targetArmor.protection * .55);
+        target.health -= damage;
+        spawnFloatingText(target.x, target.y, damage.toFixed(0), "#ffb86b", .65, 44);
+        if (target.health <= 0 && target.alive) {
+          target.alive = false;
+          enemy.targetCd = 0;
+          state.lastNoKillCheck = state.time;
+          spawnImpact(target.x, target.y, "#67e08a", 24);
+          spawnFloatingText(target.x, target.y, "ELIM", "#67e08a", 1.1, 78);
+          addChat(`${enemy.id} eliminated ${target.id}.`);
+        }
+      }
     } else {
-      spawnImpact(target.x, target.y, "#ffb86b", 5);
-      addChat(`${enemy.id} missed.`);
+      spawnImpact(shotTarget.x, shotTarget.y, "#ffb86b", 5);
     }
   }
 }
@@ -634,7 +673,6 @@ function updatePlayer(dt) {
 }
 
 function updateEnemies(dt) {
-  const p = state.player;
   const size = arenaSize();
   for (const e of state.enemies) {
     if (!e.alive) continue;
@@ -642,16 +680,21 @@ function updateEnemies(dt) {
       e.trapped -= dt;
       continue;
     }
+    e.targetCd -= dt;
+    let target = resolveEnemyTarget(e);
+    if (!target || e.targetCd <= 0 || dist(e, target) > weapons[e.weaponRank - 1].range * 1.15) {
+      target = chooseEnemyTarget(e);
+    }
     e.pathCd -= dt;
     if (e.pathCd <= 0) {
-      e.angle = Math.atan2(p.y - e.y, p.x - e.x) + rand(-.7, .7);
+      e.angle = Math.atan2(target.y - e.y, target.x - e.x) + rand(-.62, .62);
       e.pathCd = rand(.5, 1.6);
     }
-    const d = Math.hypot(p.x - e.x, p.y - e.y);
+    const d = dist(e, target);
     const desired = d > 280 ? 1 : d < 170 ? -1 : .2;
     e.x = clamp(e.x + Math.cos(e.angle) * e.speed * desired * dt, -size / 2 + 34, size / 2 - 34);
     e.y = clamp(e.y + Math.sin(e.angle) * e.speed * desired * dt, -size / 2 + 34, size / 2 - 34);
-    enemyShoot(e, dt);
+    enemyShoot(e, target, dt);
     checkEntityTraps(e, false);
   }
 }
@@ -932,7 +975,7 @@ function drawTracers(width, height, horizon) {
   for (const tracer of state.tracers) {
     const alpha = clamp(tracer.life / tracer.maxLife, 0, 1);
     const progress = clamp(1 - alpha, 0, 1);
-    const from = tracer.incoming
+    const from = tracer.worldShot
       ? screenPoint(tracer.from, width, horizon, 46)
       : { x: width * .69, y: height * .74 - state.recoil * 36, scale: 1 };
     const to = screenPoint(tracer.to, width, horizon, tracer.hit ? 54 : 10);
