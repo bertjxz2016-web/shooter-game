@@ -122,7 +122,7 @@ const state = {
   level: 1,
   shards: 0,
   kills: 0,
-  player: { x: 0, y: 0, angle: 0, health: 150, stamina: 150, z: 0, vz: 0, reload: 0, shootCd: 0, trapped: 0 },
+  player: { x: 0, y: 0, angle: 0, pitch: 0, health: 150, stamina: 150, z: 0, vz: 0, reload: 0, shootCd: 0, trapped: 0 },
   weaponRank: 1,
   armorRank: 1,
   ammo: 1,
@@ -329,7 +329,7 @@ function resetMatch() {
   state.kills = 0;
   state.won = false;
   state.running = true;
-  state.player = { x: 0, y: 0, angle: 0, health: 150, stamina: 150, z: 0, vz: 0, reload: 0, shootCd: 0, trapped: 0 };
+  state.player = { x: 0, y: 0, angle: 0, pitch: 0, health: 150, stamina: 150, z: 0, vz: 0, reload: 0, shootCd: 0, trapped: 0 };
   if (state.armorRank >= 16) state.player.health = 190;
   state.ammo = weapon().magazine;
   state.tracers = [];
@@ -395,7 +395,7 @@ function shotEndpoint(origin, angle, range) {
   };
 }
 
-function spawnTracer(from, to, color, hit, incoming = false, worldShot = incoming) {
+function spawnTracer(from, to, color, hit, incoming = false, worldShot = incoming, aimPitch = null) {
   const lifetime = incoming ? .34 : .24;
   state.tracers.push({
     from: { ...from },
@@ -404,6 +404,7 @@ function spawnTracer(from, to, color, hit, incoming = false, worldShot = incomin
     hit,
     incoming,
     worldShot,
+    aimPitch,
     life: lifetime,
     maxLife: lifetime,
     width: incoming ? 4 : 5
@@ -500,7 +501,7 @@ function shoot() {
     y: state.player.y + Math.sin(state.player.angle) * 46 + Math.sin(state.player.angle + Math.PI / 2) * 14
   };
   const shotEnd = hit ? { x: hit.x, y: hit.y } : shotEndpoint(state.player, state.player.angle + rand(-.018, .018), w.range);
-  spawnTracer(muzzle, shotEnd, hit ? "#ffe37a" : "#96e8ff", Boolean(hit));
+  spawnTracer(muzzle, shotEnd, hit ? "#ffe37a" : "#96e8ff", Boolean(hit), false, false, state.player.pitch);
   ejectCasing();
   state.recoil = Math.max(state.recoil, .34);
   state.muzzleFlash = .075;
@@ -537,15 +538,20 @@ function angleDiff(a, b) {
 function findTargetInCrosshair(range) {
   let best = null;
   let bestDistance = Infinity;
+  const p = state.player;
   for (const e of state.enemies) {
     if (!e.alive) continue;
-    const dx = e.x - state.player.x;
-    const dy = e.y - state.player.y;
+    const dx = e.x - p.x;
+    const dy = e.y - p.y;
     const d = Math.hypot(dx, dy);
     if (d > range) continue;
     const angle = Math.atan2(dy, dx);
     const spread = clamp(35 / d, .025, .13);
-    if (Math.abs(angleDiff(angle, state.player.angle)) < spread && d < bestDistance) {
+    const targetPitch = Math.atan2(p.z, d);
+    const verticalSpread = clamp(45 / d, .025, .12);
+    const horizontallyAimed = Math.abs(angleDiff(angle, p.angle)) < spread;
+    const verticallyAimed = Math.abs(targetPitch - p.pitch) < verticalSpread;
+    if (horizontallyAimed && verticallyAimed && d < bestDistance) {
       best = e;
       bestDistance = d;
     }
@@ -830,7 +836,11 @@ function drawWorld() {
   const shakePower = state.shake > 0 ? state.shake * 16 : 0;
   const shakeX = rand(-shakePower, shakePower);
   const shakeY = rand(-shakePower, shakePower);
-  const horizon = height * .47 - state.player.z * .12 + state.recoil * 10;
+  const horizon = clamp(
+    height * .47 - state.player.pitch * height * .52 - state.player.z * .12 + state.recoil * 10,
+    height * .08,
+    height * .9
+  );
   const m = state.map;
   ctx.save();
   ctx.translate(shakeX, shakeY);
@@ -978,7 +988,9 @@ function drawTracers(width, height, horizon) {
     const from = tracer.worldShot
       ? screenPoint(tracer.from, width, horizon, 46)
       : { x: width * .69, y: height * .74 - state.recoil * 36, scale: 1 };
-    const to = screenPoint(tracer.to, width, horizon, tracer.hit ? 54 : 10);
+    const to = tracer.aimPitch !== null && !tracer.hit
+      ? { x: width / 2, y: height / 2, scale: 1 }
+      : screenPoint(tracer.to, width, horizon, tracer.hit ? 54 : 10);
     if (!from || !to) continue;
     const head = clamp(progress * 1.45, 0, 1);
     const tail = clamp(head - (tracer.incoming ? .28 : .2), 0, 1);
@@ -1510,7 +1522,10 @@ window.addEventListener("keyup", event => keys.delete(event.key.toLowerCase()));
 canvas.addEventListener("click", () => canvas.requestPointerLock?.());
 document.addEventListener("pointerlockchange", () => pointer.locked = document.pointerLockElement === canvas);
 document.addEventListener("mousemove", event => {
-  if (pointer.locked && state.running) state.player.angle += event.movementX * .0025;
+  if (pointer.locked && state.running) {
+    state.player.angle += event.movementX * .0025;
+    state.player.pitch = clamp(state.player.pitch + event.movementY * .0019, -.62, .62);
+  }
 });
 canvas.addEventListener("contextmenu", event => {
   event.preventDefault();
