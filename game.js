@@ -109,6 +109,15 @@ let lastTime = performance.now();
 let wheelTurns = 0;
 let audioContext = null;
 
+function createStarterInventory() {
+  return [
+    { name: "Apple", type: "food", count: 1, heal: 22 },
+    { name: "Water", type: "water", count: 1 },
+    { name: "Sandwich", type: "food", count: 1, heal: 36 },
+    null, null, null, null, null, null
+  ];
+}
+
 const state = {
   running: false,
   won: false,
@@ -139,12 +148,7 @@ const state = {
   muzzleFlash: 0,
   damageArc: { life: 0, angle: 0 },
   chat: [],
-  inventory: [
-    { name: "Apple", type: "food", count: 5, heal: 22 },
-    { name: "Water", type: "water", count: 3 },
-    { name: "Sandwich", type: "food", count: 2, heal: 36 },
-    null, null, null, null, null, null
-  ]
+  inventory: createStarterInventory()
 };
 
 function clamp(value, min, max) {
@@ -333,6 +337,7 @@ function resetMatch() {
   state.won = false;
   state.running = true;
   state.player = { x: 0, y: 0, angle: 0, pitch: 0, health: 150, stamina: 150, z: 0, vz: 0, reload: 0, shootCd: 0, trapped: 0 };
+  state.inventory = createStarterInventory();
   if (state.armorRank >= 16) state.player.health = 190;
   state.ammo = weapon().magazine;
   state.tracers = [];
@@ -349,6 +354,7 @@ function resetMatch() {
   spawnEnemies(size);
   addChat(`${state.mode} started on ${state.map.name}.`);
   addChat("Eliminate every opponent before they eliminate you.");
+  renderInventory();
   ui.overlay.classList.add("hidden");
 }
 
@@ -625,6 +631,7 @@ function updatePlayer(dt) {
   const p = state.player;
   p.shootCd = Math.max(0, p.shootCd - dt);
   p.reload = Math.max(0, p.reload - dt);
+  p.stamina = clamp(p.stamina - dt, 0, 150);
   if (p.reload === 0 && state.ammo < weapon().magazine) state.ammo = weapon().magazine;
   if (p.trapped > 0) {
     p.trapped -= dt;
@@ -662,9 +669,7 @@ function updatePlayer(dt) {
   p.x = clamp(p.x + vx * dt, -size / 2 + 36, size / 2 - 36);
   p.y = clamp(p.y + vy * dt, -size / 2 + 36, size / 2 - 36);
 
-  if (moving) {
-    p.stamina = clamp(p.stamina - (150 / 240) * dt, 0, 150);
-  } else {
+  if (!moving) {
     p.stamina = clamp(p.stamina + 7 * dt, 0, 150);
     if (state.armorRank === 11 && p.health < 150) p.health = clamp(p.health + 1.5 * dt, 0, 150);
   }
