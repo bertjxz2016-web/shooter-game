@@ -310,6 +310,7 @@ function spawnEnemies(size) {
       angle: rand(0, Math.PI * 2),
       health,
       maxHealth: health,
+      stamina: 150,
       weaponRank: rank,
       armor: clamp(Math.floor(rank / 2), 1, armors.length),
       speed: rand(42, 75),
@@ -317,6 +318,8 @@ function spawnEnemies(size) {
       pathCd: 0,
       targetCd: rand(0, .8),
       targetId: null,
+      supplyCd: 0,
+      supplies: { water: 1, apple: 1, sandwich: 1 },
       alive: true,
       trapped: 0
     });
@@ -678,10 +681,42 @@ function updatePlayer(dt) {
   }
 }
 
+function updateEnemySupplies(enemy, dt) {
+  enemy.stamina = clamp(enemy.stamina - dt, 0, 150);
+  enemy.supplyCd = Math.max(0, enemy.supplyCd - dt);
+  if (enemy.supplyCd > 0) return;
+
+  let item = null;
+  let amount = 0;
+  if (enemy.health <= enemy.maxHealth * .45 && enemy.supplies.sandwich > 0) {
+    item = "sandwich";
+    amount = 36;
+  } else if (enemy.health <= enemy.maxHealth * .72 && enemy.supplies.apple > 0) {
+    item = "apple";
+    amount = 22;
+  } else if (enemy.stamina <= 90 && enemy.supplies.water > 0) {
+    enemy.supplies.water -= 1;
+    enemy.stamina = clamp(enemy.stamina + 60, 0, 150);
+    enemy.supplyCd = 1.2;
+    spawnFloatingText(enemy.x, enemy.y, "+60 EXH", "#74d7ff", .8, 54);
+    addChat(`${enemy.id} drank their water.`);
+    return;
+  }
+
+  if (item) {
+    enemy.supplies[item] -= 1;
+    enemy.health = clamp(enemy.health + amount, 0, enemy.maxHealth);
+    enemy.supplyCd = 1.2;
+    spawnFloatingText(enemy.x, enemy.y, `+${amount}`, "#67e08a", .8, 54);
+    addChat(`${enemy.id} ate their ${item}.`);
+  }
+}
+
 function updateEnemies(dt) {
   const size = arenaSize();
   for (const e of state.enemies) {
     if (!e.alive) continue;
+    updateEnemySupplies(e, dt);
     if (e.trapped > 0) {
       e.trapped -= dt;
       continue;
@@ -698,8 +733,9 @@ function updateEnemies(dt) {
     }
     const d = dist(e, target);
     const desired = d > 280 ? 1 : d < 170 ? -1 : .2;
-    e.x = clamp(e.x + Math.cos(e.angle) * e.speed * desired * dt, -size / 2 + 34, size / 2 - 34);
-    e.y = clamp(e.y + Math.sin(e.angle) * e.speed * desired * dt, -size / 2 + 34, size / 2 - 34);
+    const tired = e.stamina < 25 ? .52 : 1;
+    e.x = clamp(e.x + Math.cos(e.angle) * e.speed * tired * desired * dt, -size / 2 + 34, size / 2 - 34);
+    e.y = clamp(e.y + Math.sin(e.angle) * e.speed * tired * desired * dt, -size / 2 + 34, size / 2 - 34);
     enemyShoot(e, target, dt);
     checkEntityTraps(e, false);
   }
@@ -1288,6 +1324,10 @@ function drawEnemy(x, y, scale, enemy) {
   const healthRatio = clamp(enemy.health / enemy.maxHealth, 0, 1);
   ctx.fillStyle = healthRatio > .5 ? "#67e08a" : healthRatio > .25 ? "#ffd166" : "#ff5d63";
   ctx.fillRect(x - w + 1, y - h - 11, (w * 2 - 2) * healthRatio, 4);
+  ctx.fillStyle = "rgba(0,0,0,.55)";
+  ctx.fillRect(x - w, y - h - 5, w * 2, 4);
+  ctx.fillStyle = enemy.stamina < 25 ? "#ff9a62" : "#74d7ff";
+  ctx.fillRect(x - w + 1, y - h - 4, (w * 2 - 2) * clamp(enemy.stamina / 150, 0, 1), 2);
   ctx.restore();
 }
 
