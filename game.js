@@ -107,6 +107,7 @@ const keys = new Set();
 const pointer = { locked: false };
 let lastTime = performance.now();
 let wheelTurns = 0;
+let audioContext = null;
 
 const state = {
   running: false,
@@ -130,10 +131,12 @@ const state = {
   props: [],
   tracers: [],
   particles: [],
+  casings: [],
   floatText: [],
   hitMarker: 0,
   shake: 0,
   recoil: 0,
+  muzzleFlash: 0,
   damageArc: { life: 0, angle: 0 },
   chat: [],
   inventory: [
@@ -150,6 +153,67 @@ function clamp(value, min, max) {
 
 function rand(min, max) {
   return Math.random() * (max - min) + min;
+}
+
+function getAudioContext() {
+  if (!audioContext) {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtx) audioContext = new AudioCtx();
+  }
+  if (audioContext?.state === "suspended") audioContext.resume();
+  return audioContext;
+}
+
+function playShotSound(rank = 1, incoming = false) {
+  const audio = getAudioContext();
+  if (!audio) return;
+  const now = audio.currentTime;
+  const duration = incoming ? .09 : .14;
+  const buffer = audio.createBuffer(1, Math.floor(audio.sampleRate * duration), audio.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < data.length; i++) {
+    const envelope = Math.pow(1 - i / data.length, incoming ? 3.8 : 2.4);
+    data[i] = (Math.random() * 2 - 1) * envelope;
+  }
+  const noise = audio.createBufferSource();
+  const filter = audio.createBiquadFilter();
+  const gain = audio.createGain();
+  noise.buffer = buffer;
+  filter.type = "lowpass";
+  filter.frequency.setValueAtTime(incoming ? 1900 : 1200 + Math.min(rank, 18) * 45, now);
+  gain.gain.setValueAtTime(incoming ? .055 : .11, now);
+  gain.gain.exponentialRampToValueAtTime(.001, now + duration);
+  noise.connect(filter).connect(gain).connect(audio.destination);
+  noise.start(now);
+
+  if (!incoming) {
+    const thump = audio.createOscillator();
+    const thumpGain = audio.createGain();
+    thump.type = "triangle";
+    thump.frequency.setValueAtTime(105 - Math.min(rank, 20) * 1.8, now);
+    thump.frequency.exponentialRampToValueAtTime(42, now + .11);
+    thumpGain.gain.setValueAtTime(.16, now);
+    thumpGain.gain.exponentialRampToValueAtTime(.001, now + .12);
+    thump.connect(thumpGain).connect(audio.destination);
+    thump.start(now);
+    thump.stop(now + .13);
+  }
+}
+
+function playImpactSound(hitPlayer = false) {
+  const audio = getAudioContext();
+  if (!audio) return;
+  const now = audio.currentTime;
+  const ping = audio.createOscillator();
+  const gain = audio.createGain();
+  ping.type = hitPlayer ? "sawtooth" : "square";
+  ping.frequency.setValueAtTime(hitPlayer ? 92 : 780, now);
+  ping.frequency.exponentialRampToValueAtTime(hitPlayer ? 48 : 260, now + .08);
+  gain.gain.setValueAtTime(hitPlayer ? .09 : .045, now);
+  gain.gain.exponentialRampToValueAtTime(.001, now + .09);
+  ping.connect(gain).connect(audio.destination);
+  ping.start(now);
+  ping.stop(now + .1);
 }
 
 function dist(a, b) {
@@ -268,10 +332,12 @@ function resetMatch() {
   state.ammo = weapon().magazine;
   state.tracers = [];
   state.particles = [];
+  state.casings = [];
   state.floatText = [];
   state.hitMarker = 0;
   state.shake = 0;
   state.recoil = 0;
+  state.muzzleFlash = 0;
   state.damageArc = { life: 0, angle: 0 };
   generateProps(size);
   generateTraps(size);
@@ -311,6 +377,7 @@ function takeDamage(amount, source) {
     state.damageArc = { life: .35, angle: state.player.angle + Math.PI };
   }
   state.shake = Math.max(state.shake, .34);
+  playImpactSound(true);
   const warningPoint = shotEndpoint(state.player, state.damageArc.angle, 170);
   spawnFloatingText(warningPoint.x + rand(-20, 20), warningPoint.y + rand(-20, 20), `-${reduced.toFixed(0)}`, "#ff6b6b", 1.15, 56);
   ui.hitFlash.classList.add("active");
@@ -327,15 +394,16 @@ function shotEndpoint(origin, angle, range) {
 }
 
 function spawnTracer(from, to, color, hit, incoming = false) {
+  const lifetime = incoming ? .34 : .24;
   state.tracers.push({
     from: { ...from },
     to: { ...to },
     color,
     hit,
     incoming,
-    life: incoming ? .9 : 1.8,
-    maxLife: incoming ? .9 : 1.8,
-    width: incoming ? 5 : 7
+    life: lifetime,
+    maxLife: lifetime,
+    width: incoming ? 4 : 5
   });
 }
 
@@ -344,14 +412,47 @@ function spawnImpact(x, y, color = "#ffd166", count = 13) {
     state.particles.push({
       x,
       y,
-      vx: rand(-74, 74),
-      vy: rand(-74, 74),
-      size: rand(2, 5),
-      color,
-      life: rand(.22, .46),
-      maxLife: .46
+      vx: rand(-118, 118),
+      vy: rand(-118, 118),
+      size: rand(1.4, 4.2),
+      color: i % 4 === 0 ? "#ffffff" : color,
+      life: rand(.16, .38),
+      maxLife: .38,
+      drag: .86,
+      kind: "spark"
     });
   }
+  state.particles.push({
+    x, y, vx: 0, vy: 0, size: 16, color,
+    life: .22, maxLife: .22, drag: 1, kind: "ring"
+  });
+  for (let i = 0; i < 4; i++) {
+    state.particles.push({
+      x: x + rand(-8, 8),
+      y: y + rand(-8, 8),
+      vx: rand(-18, 18),
+      vy: rand(-18, 18),
+      size: rand(7, 13),
+      color: "#9da5ae",
+      life: rand(.38, .7),
+      maxLife: .7,
+      drag: .96,
+      kind: "smoke"
+    });
+  }
+}
+
+function ejectCasing() {
+  state.casings.push({
+    x: canvas.clientWidth * .7,
+    y: canvas.clientHeight * .76,
+    vx: rand(130, 210),
+    vy: rand(-250, -170),
+    rotation: rand(0, Math.PI * 2),
+    spin: rand(8, 15),
+    life: .75,
+    maxLife: .75
+  });
 }
 
 function spawnFloatingText(x, y, text, color, life = .8, lift = 44) {
@@ -389,6 +490,7 @@ function shoot() {
   }
   state.ammo -= 1;
   state.player.shootCd = 1 / w.rate;
+  playShotSound(state.weaponRank);
   const hit = findTargetInCrosshair(w.range);
   const muzzle = {
     x: state.player.x + Math.cos(state.player.angle) * 46 + Math.cos(state.player.angle + Math.PI / 2) * 14,
@@ -396,14 +498,17 @@ function shoot() {
   };
   const shotEnd = hit ? { x: hit.x, y: hit.y } : shotEndpoint(state.player, state.player.angle + rand(-.018, .018), w.range);
   spawnTracer(muzzle, shotEnd, hit ? "#ffe37a" : "#96e8ff", Boolean(hit));
-  state.recoil = Math.max(state.recoil, .28);
-  state.shake = Math.max(state.shake, .08);
+  ejectCasing();
+  state.recoil = Math.max(state.recoil, .34);
+  state.muzzleFlash = .075;
+  state.shake = Math.max(state.shake, .11);
   if (hit) {
     const enemyArmor = armors[hit.armor - 1] || armors[0];
     const damage = w.damage * 4.5 * (1 - enemyArmor.protection * .55);
     hit.health -= damage;
     state.hitMarker = .22;
-    spawnImpact(hit.x, hit.y, "#ffe37a", 16);
+    playImpactSound(false);
+    spawnImpact(hit.x, hit.y, "#ffd27a", 19);
     spawnFloatingText(hit.x, hit.y, damage.toFixed(0), "#ffe37a", .9, 58);
     addChat(`You hit ${hit.id} with ${w.name} for ${damage.toFixed(1)} XP.`);
     if (hit.health <= 0 && hit.alive) {
@@ -457,6 +562,7 @@ function enemyShoot(enemy, dt) {
       ? { x: state.player.x, y: state.player.y }
       : { x: state.player.x + rand(-150, 150), y: state.player.y + rand(-150, 150) };
     spawnTracer(enemy, target, didHit ? "#ff7b72" : "#ffb86b", didHit, true);
+    playShotSound(enemy.weaponRank, true);
     if (didHit) {
       spawnImpact(state.player.x + Math.cos(enemy.angle) * 36, state.player.y + Math.sin(enemy.angle) * 36, "#ff7b72", 9);
       takeDamage(w.damage * rand(.22, .44), enemy.id);
@@ -640,15 +746,27 @@ function updateVisualEffects(dt) {
       ...p,
       x: p.x + p.vx * dt,
       y: p.y + p.vy * dt,
-      vx: p.vx * .9,
-      vy: p.vy * .9,
+      vx: p.vx * (p.drag ?? .9),
+      vy: p.vy * (p.drag ?? .9),
       life: p.life - dt
     }))
     .filter(p => p.life > 0);
+  state.casings = state.casings
+    .map(casing => ({
+      ...casing,
+      x: casing.x + casing.vx * dt,
+      y: casing.y + casing.vy * dt,
+      vx: casing.vx * .985,
+      vy: casing.vy + 620 * dt,
+      rotation: casing.rotation + casing.spin * dt,
+      life: casing.life - dt
+    }))
+    .filter(casing => casing.life > 0 && casing.y < canvas.clientHeight + 30);
   state.floatText = state.floatText.map(t => ({ ...t, life: t.life - dt })).filter(t => t.life > 0);
   state.hitMarker = Math.max(0, state.hitMarker - dt);
   state.shake = Math.max(0, state.shake - dt * 1.8);
-  state.recoil = Math.max(0, state.recoil - dt * 2.6);
+  state.recoil = Math.max(0, state.recoil - dt * 4.2);
+  state.muzzleFlash = Math.max(0, state.muzzleFlash - dt);
   state.damageArc.life = Math.max(0, state.damageArc.life - dt);
 }
 
@@ -687,6 +805,11 @@ function drawWorld() {
   ground.addColorStop(1, "#07090d");
   ctx.fillStyle = ground;
   ctx.fillRect(0, horizon, width, height - horizon);
+  const haze = ctx.createLinearGradient(0, horizon - 25, 0, horizon + height * .28);
+  haze.addColorStop(0, "rgba(215,230,236,.16)");
+  haze.addColorStop(1, "rgba(10,13,17,0)");
+  ctx.fillStyle = haze;
+  ctx.fillRect(0, horizon - 25, width, height * .32);
 
   drawArenaWalls(width, height, horizon);
   drawGroundGrid(width, height, horizon);
@@ -694,6 +817,7 @@ function drawWorld() {
   drawTracers(width, height, horizon);
   drawParticles(width, height, horizon);
   drawFloatingText(width, height, horizon);
+  drawCasings();
   drawWeapon(width, height);
   ctx.restore();
   drawCombatOverlay(width, height);
@@ -807,27 +931,42 @@ function drawTracers(width, height, horizon) {
   ctx.globalCompositeOperation = "lighter";
   for (const tracer of state.tracers) {
     const alpha = clamp(tracer.life / tracer.maxLife, 0, 1);
+    const progress = clamp(1 - alpha, 0, 1);
     const from = tracer.incoming
       ? screenPoint(tracer.from, width, horizon, 46)
       : { x: width * .69, y: height * .74 - state.recoil * 36, scale: 1 };
     const to = screenPoint(tracer.to, width, horizon, tracer.hit ? 54 : 10);
     if (!from || !to) continue;
-    const gradient = ctx.createLinearGradient(from.x, from.y, to.x, to.y);
+    const head = clamp(progress * 1.45, 0, 1);
+    const tail = clamp(head - (tracer.incoming ? .28 : .2), 0, 1);
+    const headPoint = {
+      x: from.x + (to.x - from.x) * head,
+      y: from.y + (to.y - from.y) * head
+    };
+    const tailPoint = {
+      x: from.x + (to.x - from.x) * tail,
+      y: from.y + (to.y - from.y) * tail
+    };
+    const gradient = ctx.createLinearGradient(tailPoint.x, tailPoint.y, headPoint.x, headPoint.y);
     gradient.addColorStop(0, `rgba(255,255,255,${.95 * alpha})`);
-    gradient.addColorStop(.28, tracer.color);
-    gradient.addColorStop(1, `rgba(255,255,255,${.12 * alpha})`);
-    ctx.strokeStyle = `rgba(255,255,255,${.28 * alpha})`;
-    ctx.lineWidth = Math.max(7, tracer.width * 2.8 * alpha);
+    gradient.addColorStop(.42, tracer.color);
+    gradient.addColorStop(1, `rgba(255,255,255,${.9 * alpha})`);
+    ctx.strokeStyle = `rgba(255,210,122,${.24 * alpha})`;
+    ctx.lineWidth = Math.max(5, tracer.width * 2.4 * alpha);
     ctx.beginPath();
-    ctx.moveTo(from.x, from.y);
-    ctx.lineTo(to.x, to.y);
+    ctx.moveTo(tailPoint.x, tailPoint.y);
+    ctx.lineTo(headPoint.x, headPoint.y);
     ctx.stroke();
     ctx.strokeStyle = gradient;
-    ctx.lineWidth = Math.max(2, tracer.width * alpha);
+    ctx.lineWidth = Math.max(1.5, tracer.width * .72 * alpha);
     ctx.beginPath();
-    ctx.moveTo(from.x, from.y);
-    ctx.lineTo(to.x, to.y);
+    ctx.moveTo(tailPoint.x, tailPoint.y);
+    ctx.lineTo(headPoint.x, headPoint.y);
     ctx.stroke();
+    ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+    ctx.beginPath();
+    ctx.arc(headPoint.x, headPoint.y, Math.max(2.5, tracer.width * alpha), 0, Math.PI * 2);
+    ctx.fill();
   }
   ctx.restore();
 }
@@ -839,14 +978,52 @@ function drawParticles(width, height, horizon) {
     const point = screenPoint(particle, width, horizon, 18);
     if (!point) continue;
     const alpha = clamp(particle.life / particle.maxLife, 0, 1);
-    ctx.fillStyle = particle.color;
-    ctx.globalAlpha = alpha;
-    ctx.beginPath();
-    ctx.arc(point.x, point.y, clamp(particle.size * point.scale, 2, 8), 0, Math.PI * 2);
-    ctx.fill();
+    if (particle.kind === "ring") {
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = particle.color;
+      ctx.lineWidth = Math.max(1.5, 3 * alpha);
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, particle.size * (1.8 - alpha) * clamp(point.scale, .3, 1.4), 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (particle.kind === "smoke") {
+      ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = alpha * .38;
+      ctx.fillStyle = particle.color;
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, clamp(particle.size * point.scale * (1.4 - alpha * .35), 3, 18), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalCompositeOperation = "lighter";
+    } else {
+      ctx.strokeStyle = particle.color;
+      ctx.globalAlpha = alpha;
+      ctx.lineWidth = clamp(particle.size * point.scale, 1, 4);
+      ctx.beginPath();
+      ctx.moveTo(point.x, point.y);
+      ctx.lineTo(point.x - particle.vx * .035 * point.scale, point.y - particle.vy * .035 * point.scale);
+      ctx.stroke();
+    }
   }
   ctx.restore();
   ctx.globalAlpha = 1;
+}
+
+function drawCasings() {
+  ctx.save();
+  for (const casing of state.casings) {
+    const alpha = clamp(casing.life / casing.maxLife, 0, 1);
+    ctx.save();
+    ctx.translate(casing.x, casing.y);
+    ctx.rotate(casing.rotation);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = "#d4a846";
+    ctx.fillRect(-5, -2, 10, 4);
+    ctx.fillStyle = "#f3d681";
+    ctx.fillRect(-4, -1.5, 6, 1.5);
+    ctx.fillStyle = "#57401d";
+    ctx.fillRect(3, -2, 2, 4);
+    ctx.restore();
+  }
+  ctx.restore();
 }
 
 function drawFloatingText(width, height, horizon) {
@@ -983,60 +1160,165 @@ function drawTrap(x, y, scale, trap) {
 function drawEnemy(x, y, scale, enemy) {
   const h = clamp(115 * scale, 24, 185);
   const w = h * .34;
-  ctx.fillStyle = enemy.trapped > 0 ? "#ffd166" : "#ff5d63";
-  ctx.fillRect(x - w / 2, y - h, w, h * .72);
-  ctx.fillStyle = "#f2c8a2";
+  const armorColor = enemy.trapped > 0 ? "#d4a743" : "#8f3438";
+  ctx.save();
+  ctx.globalAlpha = clamp(.45 + scale * .35, .58, 1);
+  ctx.fillStyle = "rgba(0,0,0,.32)";
   ctx.beginPath();
-  ctx.arc(x, y - h * .84, w * .55, 0, Math.PI * 2);
+  ctx.ellipse(x, y + 2, w * 1.05, h * .09, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = "#20242d";
-  ctx.fillRect(x + w * .15, y - h * .55, w * 1.25, h * .12);
+
+  ctx.strokeStyle = "#242a30";
+  ctx.lineWidth = Math.max(3, w * .28);
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(x - w * .2, y - h * .36);
+  ctx.lineTo(x - w * .34, y - h * .03);
+  ctx.moveTo(x + w * .2, y - h * .36);
+  ctx.lineTo(x + w * .38, y - h * .03);
+  ctx.stroke();
+
+  const vest = ctx.createLinearGradient(x - w, 0, x + w, 0);
+  vest.addColorStop(0, "#32191b");
+  vest.addColorStop(.45, armorColor);
+  vest.addColorStop(1, "#4d2024");
+  ctx.fillStyle = vest;
+  ctx.beginPath();
+  ctx.moveTo(x - w * .58, y - h * .76);
+  ctx.lineTo(x + w * .56, y - h * .76);
+  ctx.lineTo(x + w * .45, y - h * .32);
+  ctx.lineTo(x - w * .42, y - h * .32);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,.18)";
+  ctx.lineWidth = Math.max(1, w * .04);
+  ctx.stroke();
+
+  ctx.strokeStyle = "#663034";
+  ctx.lineWidth = Math.max(3, w * .24);
+  ctx.beginPath();
+  ctx.moveTo(x - w * .48, y - h * .69);
+  ctx.lineTo(x - w * .72, y - h * .43);
+  ctx.moveTo(x + w * .48, y - h * .68);
+  ctx.lineTo(x + w * .75, y - h * .49);
+  ctx.stroke();
+
+  ctx.fillStyle = "#c58f70";
+  ctx.beginPath();
+  ctx.arc(x, y - h * .86, w * .43, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#272d32";
+  ctx.beginPath();
+  ctx.arc(x, y - h * .9, w * .49, Math.PI, Math.PI * 2);
+  ctx.lineTo(x + w * .49, y - h * .84);
+  ctx.lineTo(x - w * .49, y - h * .84);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,.28)";
+  ctx.fillRect(x - w * .22, y - h * .88, w * .44, Math.max(1, h * .025));
+
+  ctx.strokeStyle = "#141a20";
+  ctx.lineWidth = Math.max(3, w * .18);
+  ctx.beginPath();
+  ctx.moveTo(x + w * .18, y - h * .58);
+  ctx.lineTo(x + w * 1.18, y - h * .48);
+  ctx.stroke();
+  ctx.fillStyle = "#313a43";
+  ctx.fillRect(x + w * .52, y - h * .54, w * .86, Math.max(3, h * .07));
+  ctx.fillStyle = "#0d1115";
+  ctx.fillRect(x + w * 1.28, y - h * .53, w * .3, Math.max(2, h * .045));
+
   ctx.fillStyle = "rgba(0,0,0,.55)";
-  ctx.fillRect(x - w, y - h - 10, w * 2, 5);
-  ctx.fillStyle = "#67e08a";
-  ctx.fillRect(x - w, y - h - 10, w * 2 * clamp(enemy.health / enemy.maxHealth, 0, 1), 5);
+  ctx.fillRect(x - w, y - h - 12, w * 2, 6);
+  const healthRatio = clamp(enemy.health / enemy.maxHealth, 0, 1);
+  ctx.fillStyle = healthRatio > .5 ? "#67e08a" : healthRatio > .25 ? "#ffd166" : "#ff5d63";
+  ctx.fillRect(x - w + 1, y - h - 11, (w * 2 - 2) * healthRatio, 4);
+  ctx.restore();
 }
 
 function drawWeapon(width, height) {
   const w = weapon();
-  const x = width * .64 + state.recoil * 18;
-  const y = height * .82 + state.recoil * 28;
+  const moving = keys.has("w") || keys.has("a") || keys.has("s") || keys.has("d");
+  const bob = moving && state.running ? Math.sin(state.time * 9) : 0;
+  const x = width * .64 + state.recoil * 26 + bob * 3;
+  const y = height * .82 + state.recoil * 38 + Math.abs(bob) * 3;
   ctx.save();
   ctx.translate(x, y);
-  ctx.rotate(-.1 - state.recoil * .06);
-  ctx.fillStyle = "rgba(0,0,0,.35)";
-  ctx.fillRect(-74, -10, 176, 42);
-  ctx.fillStyle = "#111823";
-  ctx.fillRect(-66, -27, 148, 37);
-  ctx.fillStyle = "#2d3746";
-  ctx.fillRect(-54, -21, 116, 24);
-  ctx.fillStyle = "#96e8ff";
-  ctx.fillRect(18, -17, 90, 8);
-  ctx.fillStyle = "#080d13";
-  ctx.fillRect(-34, 7, 32, 58);
-  ctx.fillStyle = "#1a2230";
-  ctx.fillRect(-72, -17, 30, 26);
+  ctx.rotate(-.1 - state.recoil * .09 + bob * .004);
+  ctx.fillStyle = "rgba(0,0,0,.42)";
+  ctx.beginPath();
+  ctx.moveTo(-82, -3);
+  ctx.lineTo(105, -3);
+  ctx.lineTo(112, 31);
+  ctx.lineTo(-58, 39);
+  ctx.closePath();
+  ctx.fill();
+
+  const receiver = ctx.createLinearGradient(0, -30, 0, 25);
+  receiver.addColorStop(0, "#4f5c68");
+  receiver.addColorStop(.26, "#252e37");
+  receiver.addColorStop(1, "#0d1319");
+  ctx.fillStyle = receiver;
+  ctx.beginPath();
+  ctx.moveTo(-70, -29);
+  ctx.lineTo(73, -29);
+  ctx.lineTo(94, -13);
+  ctx.lineTo(75, 11);
+  ctx.lineTo(-54, 17);
+  ctx.lineTo(-78, 3);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,.16)";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  ctx.fillStyle = "#10171d";
+  ctx.fillRect(62, -23, 92, 17);
+  ctx.fillStyle = "#707c84";
+  ctx.fillRect(72, -20, 82, 4);
+  ctx.fillStyle = "#080c10";
+  ctx.fillRect(146, -25, 26, 21);
+  ctx.fillStyle = "#313b44";
+  ctx.fillRect(-40, -37, 67, 9);
+  ctx.fillStyle = "#151c23";
+  ctx.fillRect(-31, 9, 31, 61);
+  ctx.fillStyle = "#2f3941";
+  ctx.beginPath();
+  ctx.moveTo(8, 8);
+  ctx.lineTo(40, 7);
+  ctx.lineTo(31, 57);
+  ctx.lineTo(4, 54);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#9d7937";
+  ctx.fillRect(14, 12, 15, 39);
+  ctx.fillStyle = "#171e25";
+  ctx.fillRect(-84, -18, 24, 32);
+  ctx.fillStyle = "rgba(255,255,255,.23)";
+  ctx.fillRect(-55, -23, 91, 3);
   ctx.fillStyle = "#d9e1ea";
   ctx.font = "700 12px sans-serif";
   ctx.fillText(w.name, -62, -38);
 
-  if (state.recoil > 0) {
-    const alpha = clamp(state.recoil / .28, 0, 1);
+  if (state.muzzleFlash > 0) {
+    const alpha = clamp(state.muzzleFlash / .075, 0, 1);
     ctx.globalCompositeOperation = "lighter";
-    const flash = ctx.createRadialGradient(120, -13, 0, 120, -13, 54);
+    const flash = ctx.createRadialGradient(176, -15, 0, 176, -15, 82);
     flash.addColorStop(0, `rgba(255,255,255,${alpha})`);
     flash.addColorStop(.22, `rgba(255,226,106,${alpha})`);
     flash.addColorStop(1, "rgba(255,111,64,0)");
     ctx.fillStyle = flash;
     ctx.beginPath();
-    ctx.arc(120, -13, 54, 0, Math.PI * 2);
+    ctx.arc(176, -15, 82, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = `rgba(255, 244, 190, ${alpha})`;
     ctx.beginPath();
-    ctx.moveTo(99, -13);
-    ctx.lineTo(156, -34);
-    ctx.lineTo(140, -13);
-    ctx.lineTo(160, 10);
+    ctx.moveTo(167, -15);
+    ctx.lineTo(222, -47);
+    ctx.lineTo(204, -16);
+    ctx.lineTo(230, 10);
+    ctx.lineTo(194, -2);
+    ctx.lineTo(205, 31);
     ctx.closePath();
     ctx.fill();
   }
