@@ -319,7 +319,8 @@ function spawnEnemies(size) {
       armor: clamp(Math.floor(rank / 2), 1, armors.length),
       speed: rand(42, 75),
       shootCd: rand(.2, 1.6),
-      pathCd: 0,
+      tacticCd: rand(.3, 1.1),
+      strafeDir: Math.random() < .5 ? -1 : 1,
       targetCd: rand(0, .8),
       targetId: null,
       supplyCd: 0,
@@ -522,6 +523,8 @@ function shoot() {
     if (hit.health > 0) {
       hit.targetId = "player";
       hit.targetCd = 4;
+      hit.strafeDir *= -1;
+      hit.tacticCd = 0;
     }
     state.hitMarker = .22;
     playImpactSound(false);
@@ -580,7 +583,9 @@ function chooseEnemyTarget(enemy) {
     : rivals
       .map(candidate => ({
         candidate,
-        score: dist(enemy, candidate) * rand(.78, 1.28)
+        score: dist(enemy, candidate)
+          * (.65 + clamp(candidate.health / candidate.maxHealth, 0, 1) * .55)
+          * rand(.82, 1.18)
       }))
       .sort((a, b) => a.score - b.score)[0].candidate;
   enemy.targetId = target === state.player ? "player" : target.id;
@@ -601,7 +606,10 @@ function enemyShoot(enemy, target, dt) {
   const w = weapons[enemy.weaponRank - 1];
   if (d < w.range * .75 && enemy.shootCd <= 0) {
     enemy.shootCd = rand(.65, 1.4) + 1 / w.rate;
-    const didHit = Math.random() > clamp(d / w.range, .12, .82);
+    const rangeRatio = clamp(d / (w.range * .75), 0, 1);
+    const fatiguePenalty = enemy.stamina < 25 ? .72 : 1;
+    const accuracy = clamp((.84 - rangeRatio * .54) * fatiguePenalty, .2, .84);
+    const didHit = Math.random() < accuracy;
     const shotTarget = didHit
       ? { x: target.x, y: target.y }
       : { x: target.x + rand(-150, 150), y: target.y + rand(-150, 150) };
@@ -616,6 +624,12 @@ function enemyShoot(enemy, target, dt) {
         const damage = w.damage * rand(.28, .52) * (1 - targetArmor.protection * .55);
         target.health -= damage;
         spawnFloatingText(target.x, target.y, damage.toFixed(0), "#ffb86b", .65, 44);
+        if (target.health > 0) {
+          target.targetId = enemy.id;
+          target.targetCd = 3;
+          target.strafeDir *= -1;
+          target.tacticCd = 0;
+        }
         if (target.health <= 0 && target.alive) {
           target.alive = false;
           enemy.targetCd = 0;
@@ -636,7 +650,7 @@ function updatePlayer(dt) {
   p.shootCd = Math.max(0, p.shootCd - dt);
   p.reload = Math.max(0, p.reload - dt);
   p.stamina = clamp(p.stamina - 3 * dt, 0, 150);
-  p.health = clamp(p.health - dt, 0, 220);
+  p.health = clamp(p.health - .5 * dt, 0, 220);
   if (p.health <= 0) {
     endMatch(false, "You lost all health over time.");
     return;
@@ -697,8 +711,16 @@ function updatePlayer(dt) {
 
 function updateEnemySupplies(enemy, dt) {
   enemy.stamina = clamp(enemy.stamina - dt, 0, 150);
+  enemy.health = clamp(enemy.health - .5 * dt, 0, enemy.maxHealth);
+  if (enemy.health <= 0) {
+    enemy.alive = false;
+    state.lastNoKillCheck = state.time;
+    addChat(`${enemy.id} ran out of health.`);
+    if (state.enemies.every(candidate => !candidate.alive)) endMatch(true);
+    return false;
+  }
   enemy.supplyCd = Math.max(0, enemy.supplyCd - dt);
-  if (enemy.supplyCd > 0) return;
+  if (enemy.supplyCd > 0) return true;
 
   let item = null;
   let amount = 0;
@@ -714,7 +736,7 @@ function updateEnemySupplies(enemy, dt) {
     enemy.supplyCd = 1.2;
     spawnFloatingText(enemy.x, enemy.y, "+60 EXH", "#74d7ff", .8, 54);
     addChat(`${enemy.id} drank their water.`);
-    return;
+    return true;
   }
 
   if (item) {
@@ -724,13 +746,14 @@ function updateEnemySupplies(enemy, dt) {
     spawnFloatingText(enemy.x, enemy.y, `+${amount}`, "#67e08a", .8, 54);
     addChat(`${enemy.id} ate their ${item}.`);
   }
+  return true;
 }
 
 function updateEnemies(dt) {
   const size = arenaSize();
   for (const e of state.enemies) {
     if (!e.alive) continue;
-    updateEnemySupplies(e, dt);
+    if (!updateEnemySupplies(e, dt)) continue;
     if (e.trapped > 0) {
       e.trapped -= dt;
       continue;
@@ -740,16 +763,47 @@ function updateEnemies(dt) {
     if (!target || e.targetCd <= 0 || dist(e, target) > weapons[e.weaponRank - 1].range * 1.15) {
       target = chooseEnemyTarget(e);
     }
-    e.pathCd -= dt;
-    if (e.pathCd <= 0) {
-      e.angle = Math.atan2(target.y - e.y, target.x - e.x) + rand(-.62, .62);
-      e.pathCd = rand(.5, 1.6);
+    e.tacticCd -= dt;
+    if (e.tacticCd <= 0) {
+      if (Math.random() < .42) e.strafeDir *= -1;
+      e.tacticCd = rand(.65, 1.45);
     }
+
+    const w = weapons[e.weaponRank - 1];
     const d = dist(e, target);
-    const desired = d > 280 ? 1 : d < 170 ? -1 : .2;
+    const targetAngle = Math.atan2(target.y - e.y, target.x - e.x);
+    const idealRange = clamp(w.range * .48, 150, 420);
+    const healthRatio = clamp(e.health / e.maxHealth, 0, 1);
+    let radial = d > idealRange * 1.12 ? 1 : d < idealRange * .72 ? -1 : 0;
+    if (healthRatio < .3) radial = -1;
+    const strafe = d < idealRange * 1.6 ? e.strafeDir * .68 : 0;
+    let moveX = Math.cos(targetAngle) * radial + Math.cos(targetAngle + Math.PI / 2) * strafe;
+    let moveY = Math.sin(targetAngle) * radial + Math.sin(targetAngle + Math.PI / 2) * strafe;
+
+    for (const trap of state.traps) {
+      if (!trap.active) continue;
+      const gap = Math.max(1, dist(e, trap));
+      const dangerRange = trap.radius + 95;
+      if (gap >= dangerRange) continue;
+      const force = (dangerRange - gap) / dangerRange * 2.4;
+      moveX += (e.x - trap.x) / gap * force;
+      moveY += (e.y - trap.y) / gap * force;
+    }
+    for (const other of state.enemies) {
+      if (!other.alive || other === e) continue;
+      const gap = Math.max(1, dist(e, other));
+      if (gap >= 70) continue;
+      const force = (70 - gap) / 70 * 1.3;
+      moveX += (e.x - other.x) / gap * force;
+      moveY += (e.y - other.y) / gap * force;
+    }
+
+    const movementLength = Math.hypot(moveX, moveY) || 1;
     const tired = e.stamina < 25 ? .52 : 1;
-    e.x = clamp(e.x + Math.cos(e.angle) * e.speed * tired * desired * dt, -size / 2 + 34, size / 2 - 34);
-    e.y = clamp(e.y + Math.sin(e.angle) * e.speed * tired * desired * dt, -size / 2 + 34, size / 2 - 34);
+    const caution = healthRatio < .3 ? 1.16 : 1;
+    e.x = clamp(e.x + moveX / movementLength * e.speed * tired * caution * dt, -size / 2 + 34, size / 2 - 34);
+    e.y = clamp(e.y + moveY / movementLength * e.speed * tired * caution * dt, -size / 2 + 34, size / 2 - 34);
+    e.angle = targetAngle;
     enemyShoot(e, target, dt);
     checkEntityTraps(e, false);
   }
@@ -820,7 +874,9 @@ function update(dt) {
   if (!state.running) return;
   state.time += dt;
   updatePlayer(dt);
+  if (!state.running) return;
   updateEnemies(dt);
+  if (!state.running) return;
   checkEntityTraps(state.player, true);
   updateTrapsByTime();
   updateVisualEffects(dt);
