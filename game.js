@@ -33,7 +33,12 @@ const ui = {
   closeShopBtn: document.getElementById("closeShopBtn"),
   gunList: document.getElementById("gunList"),
   armorList: document.getElementById("armorList"),
-  hitFlash: document.getElementById("hitFlash")
+  hitFlash: document.getElementById("hitFlash"),
+  duelHud: document.getElementById("duelHud"),
+  playerRoundScore: document.getElementById("playerRoundScore"),
+  rivalRoundScore: document.getElementById("rivalRoundScore"),
+  roundLabel: document.getElementById("roundLabel"),
+  roundBanner: document.getElementById("roundBanner")
 };
 
 const maps = [
@@ -123,7 +128,7 @@ const state = {
   won: false,
   selectedMap: null,
   map: maps[0],
-  mode: "Free for all (6 people)",
+  mode: "Rival Duel (first to 5)",
   time: 0,
   lastNoKillCheck: 0,
   lastTrapMinute: 0,
@@ -131,6 +136,12 @@ const state = {
   level: 1,
   shards: 0,
   kills: 0,
+  playerRounds: 0,
+  rivalRounds: 0,
+  roundNumber: 1,
+  duelPhase: "menu",
+  phaseTimer: 0,
+  roundMessage: "",
   player: { x: 0, y: 0, angle: 0, pitch: 0, health: 150, stamina: 150, z: 0, vz: 0, reload: 0, shootCd: 0, trapped: 0 },
   weaponRank: 1,
   armorRank: 1,
@@ -241,6 +252,7 @@ function addChat(text) {
 }
 
 function modeEnemyCount() {
+  if (isRivalDuel()) return 1;
   if (state.mode.includes("1v1")) return 1;
   if (state.mode.includes("4v4")) return 4;
   if (state.mode.includes("6v6")) return 6;
@@ -249,7 +261,12 @@ function modeEnemyCount() {
   return 5;
 }
 
+function isRivalDuel() {
+  return state.mode.includes("Rival Duel");
+}
+
 function arenaSize() {
+  if (isRivalDuel()) return 980;
   if (state.mode.includes("1v1")) return 950;
   if (state.mode.includes("8") || state.mode.includes("6v6") || state.mode.includes("Bedwars")) return 1700;
   if (state.mode.includes("4v4")) return 1450;
@@ -280,6 +297,23 @@ function generateProps(size) {
   }[state.map.name] || ["cover"];
 
   state.props = [];
+  if (isRivalDuel()) {
+    const duelCover = [
+      [-260, -210], [-260, 210], [260, -210], [260, 210],
+      [-90, -250], [-90, 250], [90, -250], [90, 250],
+      [-330, 0], [330, 0], [0, -110], [0, 110]
+    ];
+    state.props = duelCover.map(([x, y], i) => ({
+      x,
+      y,
+      radius: i < 4 ? 52 : 38,
+      height: i < 4 ? 135 : 92,
+      name: i % 2 ? "barrier" : "cover",
+      type: i % 3 === 0 ? "buildWall" : "cover",
+      tint: i % 2 ? "#37b8ef" : "#ec5463"
+    }));
+    return;
+  }
   for (let i = 0; i < 32; i++) {
     const p = randomPoint(size);
     const type = i % 7 === 0 ? "ramp" : i % 5 === 0 ? "buildWall" : i % 3 === 0 ? "cover" : "crate";
@@ -306,8 +340,12 @@ function spawnEnemies(size) {
   state.enemies = [];
   for (let i = 0; i < modeEnemyCount(); i++) {
     const p = randomPoint(size);
-    const rank = clamp(Math.floor(state.level / 2) + 1 + Math.floor(rand(0, 4)), 1, weapons.length);
-    const health = 46 + state.level * 4 + rand(0, 22);
+    const rank = isRivalDuel()
+      ? state.weaponRank
+      : clamp(Math.floor(state.level / 2) + 1 + Math.floor(rand(0, 4)), 1, weapons.length);
+    const health = isRivalDuel()
+      ? (state.armorRank >= 16 ? 190 : 150)
+      : 46 + state.level * 4 + rand(0, 22);
     state.enemies.push({
       id: names[i],
       ...p,
@@ -316,8 +354,8 @@ function spawnEnemies(size) {
       maxHealth: health,
       stamina: 150,
       weaponRank: rank,
-      armor: clamp(Math.floor(rank / 2), 1, armors.length),
-      speed: rand(42, 75),
+      armor: isRivalDuel() ? state.armorRank : clamp(Math.floor(rank / 2), 1, armors.length),
+      speed: isRivalDuel() ? 132 : rand(42, 75),
       shootCd: rand(.2, 1.6),
       tacticCd: rand(.3, 1.1),
       strafeDir: Math.random() < .5 ? -1 : 1,
@@ -331,12 +369,8 @@ function spawnEnemies(size) {
   }
 }
 
-function resetMatch() {
+function resetCombatants(regenerateArena = true) {
   const size = arenaSize();
-  state.time = 0;
-  state.kills = 0;
-  state.won = false;
-  state.running = true;
   state.player = { x: 0, y: 0, angle: 0, pitch: 0, health: 150, stamina: 150, z: 0, vz: 0, reload: 0, shootCd: 0, trapped: 0 };
   state.inventory = createStarterInventory();
   if (state.armorRank >= 16) state.player.health = 190;
@@ -350,29 +384,100 @@ function resetMatch() {
   state.recoil = 0;
   state.muzzleFlash = 0;
   state.damageArc = { life: 0, angle: 0 };
-  generateProps(size);
-  generateTraps(size);
+  if (regenerateArena) generateProps(size);
+  if (isRivalDuel()) {
+    state.traps = [];
+  } else if (regenerateArena) {
+    generateTraps(size);
+  }
   spawnEnemies(size);
-  addChat(`${state.mode} started on ${state.map.name}.`);
-  addChat("Eliminate every opponent before they eliminate you.");
+
+  if (isRivalDuel()) {
+    state.player.x = -size * .31;
+    state.player.y = 0;
+    state.player.angle = 0;
+    const rival = state.enemies[0];
+    rival.x = size * .31;
+    rival.y = 0;
+    rival.angle = Math.PI;
+    rival.targetId = "player";
+    rival.targetCd = 4;
+  }
+
   renderInventory();
   ui.overlay.classList.add("hidden");
+}
+
+function startDuelRound(regenerateArena = false) {
+  resetCombatants(regenerateArena);
+  state.running = false;
+  state.duelPhase = "countdown";
+  state.phaseTimer = 3.2;
+  state.roundMessage = "";
+  addChat(`Round ${state.roundNumber}: you versus ${state.enemies[0].id}.`);
+}
+
+function resetMatch() {
+  state.time = 0;
+  state.kills = 0;
+  state.won = false;
+  state.playerRounds = 0;
+  state.rivalRounds = 0;
+  state.roundNumber = 1;
+
+  if (isRivalDuel()) {
+    startDuelRound(true);
+    addChat(`${state.mode} started on ${state.map.name}. First to 5 rounds wins.`);
+  } else {
+    state.duelPhase = "off";
+    state.running = true;
+    resetCombatants(true);
+    addChat(`${state.mode} started on ${state.map.name}.`);
+    addChat("Eliminate every opponent before they eliminate you.");
+  }
+}
+
+function finishDuelRound(playerWon, reason) {
+  if (!isRivalDuel() || state.duelPhase !== "playing") return;
+  state.running = false;
+  state.duelPhase = "roundEnd";
+  state.phaseTimer = 2.25;
+  if (playerWon) state.playerRounds += 1;
+  else state.rivalRounds += 1;
+  state.roundMessage = playerWon ? "ROUND WON" : "ROUND LOST";
+  addChat(`${state.roundMessage}. Score: ${state.playerRounds}-${state.rivalRounds}${reason ? ` (${reason})` : ""}.`);
+}
+
+function handlePlayerDefeat(reason) {
+  if (isRivalDuel()) finishDuelRound(false, reason);
+  else endMatch(false, reason);
+}
+
+function handleAllEnemiesDefeated(reason = "Rival eliminated") {
+  if (!state.enemies.every(enemy => !enemy.alive)) return;
+  if (isRivalDuel()) finishDuelRound(true, reason);
+  else endMatch(true);
 }
 
 function endMatch(won, reason) {
   state.running = false;
   state.won = won;
+  if (isRivalDuel()) state.duelPhase = "matchEnd";
   if (won) {
     const diamonds = 10 + state.kills * 4 + Math.floor(state.time / 60);
     state.diamonds += diamonds;
     if (state.kills >= 3) state.level += 1;
     if (state.time > 2400) state.shards += 1;
-    ui.overlayTitle.textContent = "Victory";
-    ui.overlayBody.textContent = `You won on ${state.map.name}. Reward: ${diamonds} diamonds${state.kills >= 3 ? " and 1 level" : ""}.`;
+    ui.overlayTitle.textContent = isRivalDuel() ? "Duel Victory" : "Victory";
+    ui.overlayBody.textContent = isRivalDuel()
+      ? `You won ${state.playerRounds}-${state.rivalRounds} on ${state.map.name}. Reward: ${diamonds} diamonds.`
+      : `You won on ${state.map.name}. Reward: ${diamonds} diamonds${state.kills >= 3 ? " and 1 level" : ""}.`;
     addChat(`You won and earned ${diamonds} diamonds.`);
   } else {
-    ui.overlayTitle.textContent = "Defeat";
-    ui.overlayBody.textContent = reason || "You were eliminated. Restart to try a new battle.";
+    ui.overlayTitle.textContent = isRivalDuel() ? "Duel Defeat" : "Defeat";
+    ui.overlayBody.textContent = isRivalDuel()
+      ? `Your rival won ${state.rivalRounds}-${state.playerRounds}. ${reason || "Restart for a rematch."}`
+      : reason || "You were eliminated. Restart to try a new battle.";
     addChat("You were eliminated.");
   }
   ui.overlay.classList.remove("hidden");
@@ -395,7 +500,7 @@ function takeDamage(amount, source) {
   ui.hitFlash.classList.add("active");
   setTimeout(() => ui.hitFlash.classList.remove("active"), 130);
   if (source) addChat(`${source} hit you for ${reduced.toFixed(0)} XP.`);
-  if (state.player.health <= 0) endMatch(false, source ? `${source} eliminated you.` : "You were eliminated.");
+  if (state.player.health <= 0) handlePlayerDefeat(source ? `${source} eliminated you.` : "You were eliminated.");
 }
 
 function shotEndpoint(origin, angle, range) {
@@ -539,7 +644,7 @@ function shoot() {
       spawnFloatingText(hit.x, hit.y, "ELIM", "#67e08a", 1.2, 84);
       addChat(`${hit.id} was eliminated. +2 diamonds.`);
       state.lastNoKillCheck = state.time;
-      if (state.enemies.every(e => !e.alive)) endMatch(true);
+      handleAllEnemiesDefeated(`${hit.id} eliminated`);
     }
   } else {
     spawnImpact(shotEnd.x, shotEnd.y, "#96e8ff", 6);
@@ -652,7 +757,7 @@ function updatePlayer(dt) {
   p.stamina = clamp(p.stamina - 3 * dt, 0, 150);
   p.health = clamp(p.health - .5 * dt, 0, 220);
   if (p.health <= 0) {
-    endMatch(false, "You lost all health over time.");
+    handlePlayerDefeat("You lost all health over time.");
     return;
   }
   if (p.reload === 0 && state.ammo < weapon().magazine) state.ammo = weapon().magazine;
@@ -667,7 +772,8 @@ function updatePlayer(dt) {
   const right = keys.has("d") || keys.has("arrowright") ? 1 : 0;
   const moving = forward || back || left || right;
   const tired = p.stamina < 25 ? .52 : 1;
-  const speed = 185 * armor().speed * tired;
+  const sprinting = keys.has("shift") && moving && p.stamina > 0;
+  const speed = 185 * armor().speed * tired * (sprinting ? 1.38 : 1);
   let vx = 0;
   let vy = 0;
 
@@ -716,7 +822,7 @@ function updateEnemySupplies(enemy, dt) {
     enemy.alive = false;
     state.lastNoKillCheck = state.time;
     addChat(`${enemy.id} ran out of health.`);
-    if (state.enemies.every(candidate => !candidate.alive)) endMatch(true);
+    handleAllEnemiesDefeated(`${enemy.id} ran out of health`);
     return false;
   }
   enemy.supplyCd = Math.max(0, enemy.supplyCd - dt);
@@ -844,6 +950,7 @@ function checkEntityTraps(entity, isPlayer) {
 }
 
 function updateTrapsByTime() {
+  if (isRivalDuel()) return;
   const minute = Math.floor(state.time / 60);
   if (minute >= 5 && minute !== state.lastTrapMinute) {
     state.lastTrapMinute = minute;
@@ -865,12 +972,43 @@ function updateTrapsByTime() {
       unlucky.alive = false;
       addChat(`No eliminations for 4 minutes. The server removed ${unlucky.id}.`);
       state.lastNoKillCheck = state.time;
-      if (state.enemies.every(e => !e.alive)) endMatch(true);
+      handleAllEnemiesDefeated(`${unlucky.id} was removed`);
     }
   }
 }
 
 function update(dt) {
+  if (isRivalDuel()) {
+    if (state.duelPhase === "countdown") {
+      state.phaseTimer -= dt;
+      updateVisualEffects(dt);
+      if (state.phaseTimer <= 0) {
+        state.duelPhase = "playing";
+        state.running = true;
+        state.phaseTimer = .65;
+        state.roundMessage = "FIGHT!";
+      }
+      return;
+    }
+    if (state.duelPhase === "roundEnd") {
+      state.phaseTimer -= dt;
+      updateVisualEffects(dt);
+      if (state.phaseTimer <= 0) {
+        if (state.playerRounds >= 5 || state.rivalRounds >= 5) {
+          const won = state.playerRounds >= 5;
+          endMatch(won, won ? "First to five rounds." : "Your rival reached five rounds first.");
+        } else {
+          state.roundNumber += 1;
+          startDuelRound(false);
+        }
+      }
+      return;
+    }
+    if (state.duelPhase === "matchEnd" || state.duelPhase === "menu") return;
+    if (state.duelPhase === "playing" && state.phaseTimer > 0) {
+      state.phaseTimer = Math.max(0, state.phaseTimer - dt);
+    }
+  }
   if (!state.running) return;
   state.time += dt;
   updatePlayer(dt);
@@ -1503,11 +1641,37 @@ function updateUi() {
   ui.resourceText.textContent = `Diamonds ${state.diamonds} | Level ${state.level} | Shards ${state.shards}`;
   ui.modeText.textContent = `Mode: ${state.mode}`;
   ui.mapText.textContent = `Map: ${state.map.name}`;
-  ui.enemyText.textContent = `Opponents: ${state.enemies.filter(e => e.alive).length}`;
+  ui.enemyText.textContent = isRivalDuel()
+    ? `Rival: ${state.enemies[0]?.id || "Waiting"}`
+    : `Opponents: ${state.enemies.filter(e => e.alive).length}`;
   ui.weaponText.textContent = `Weapon: ${weapon().name}`;
   ui.ammoText.textContent = state.player.reload > 0 ? "Reloading..." : `Ammo: ${state.ammo} / ${weapon().magazine}`;
-  ui.trapText.textContent = `Mines ${countTraps("mine")} | Holes ${countTraps("hole")} | Pitfalls ${countTraps("pitfall")}`;
+  ui.trapText.textContent = isRivalDuel()
+    ? "Fair arena | Traps disabled"
+    : `Mines ${countTraps("mine")} | Holes ${countTraps("hole")} | Pitfalls ${countTraps("pitfall")}`;
   ui.loadoutText.textContent = `${weapon().name} + ${armor().name}`;
+
+  if (isRivalDuel()) {
+    ui.duelHud.classList.remove("hidden");
+    ui.playerRoundScore.textContent = state.playerRounds;
+    ui.rivalRoundScore.textContent = state.rivalRounds;
+    ui.roundLabel.textContent = `ROUND ${state.roundNumber}`;
+    let banner = "";
+    if (state.duelPhase === "countdown") banner = Math.min(3, Math.max(1, Math.ceil(state.phaseTimer)));
+    if (state.duelPhase === "roundEnd") banner = state.roundMessage;
+    if (state.duelPhase === "playing" && state.phaseTimer > 0) banner = state.roundMessage;
+    if (banner) {
+      ui.roundBanner.textContent = banner;
+      ui.roundBanner.classList.remove("hidden");
+    } else {
+      ui.roundBanner.classList.add("hidden");
+    }
+    ui.rewardText.textContent = "Win 5 rounds before your rival.";
+  } else {
+    ui.duelHud.classList.add("hidden");
+    ui.roundBanner.classList.add("hidden");
+    ui.rewardText.textContent = "Win: diamonds, level XP, and survival bonuses.";
+  }
 }
 
 function countTraps(type) {

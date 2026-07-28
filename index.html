@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Arena Wheel FPS</title>
+  <title>Arena Duel FPS</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <main class="shell">
-    <section class="game-wrap" aria-label="Arena Wheel FPS game">
+    <section class="game-wrap" aria-label="Arena Duel FPS game">
       <canvas id="gameCanvas" width="1280" height="720"></canvas>
 
       <div class="top-hud">
@@ -32,21 +32,29 @@
         </div>
       </div>
 
+      <div id="duelHud" class="duel-hud">
+        <span class="duel-side player-side">YOU <b id="playerRoundScore">0</b></span>
+        <span id="roundLabel" class="round-label">ROUND 1</span>
+        <span class="duel-side rival-side"><b id="rivalRoundScore">0</b> RIVAL</span>
+      </div>
+      <div id="roundBanner" class="round-banner hidden"></div>
+
       <div class="center-reticle" aria-hidden="true"></div>
       <div id="hitFlash" class="hit-flash"></div>
 
       <aside class="left-panel">
         <div class="panel-block wheel-block">
-          <h1>Arena Wheel FPS</h1>
+          <h1>Arena Duel FPS</h1>
           <div id="wheel" class="wheel">
             <span id="wheelLabel">SPIN</span>
           </div>
           <button id="spinMapBtn" type="button">Spin map</button>
           <select id="modeSelect" aria-label="Game mode">
+            <option selected>Rival Duel (first to 5)</option>
             <option>1v1 battle</option>
             <option>Team battle 4v4</option>
             <option>Team battle 6v6</option>
-            <option selected>Free for all (6 people)</option>
+            <option>Free for all (6 people)</option>
             <option>Free for all (8 people)</option>
             <option>Bedwars with guns (3v3v3v3)</option>
           </select>
@@ -61,7 +69,7 @@
 
         <div class="panel-block instructions">
           <h2>Controls</h2>
-          <p>WASD or arrows move, mouse looks, Space jumps, R reloads, mouse click or F shoots.</p>
+          <p>WASD or arrows move, Shift sprints, mouse looks, Space jumps, R reloads, mouse click or F shoots.</p>
           <p>1-9 uses inventory slots. Rest by standing still. Drink water to restore 60 exhaustion.</p>
         </div>
       </aside>
@@ -80,7 +88,7 @@
         </div>
         <div class="panel-block compact">
           <h2>Rewards</h2>
-          <p id="rewardText">Win: diamonds, level XP, and survival bonuses.</p>
+          <p id="rewardText">First to 5 rounds wins the featured duel.</p>
         </div>
       </aside>
 
@@ -90,8 +98,8 @@
 
       <section id="overlay" class="overlay">
         <div class="modal">
-          <h2 id="overlayTitle">Spin the wheel</h2>
-          <p id="overlayBody">Choose a game mode, spin for a background, then start the match. Eliminate every opponent to win. If your health reaches zero, you lose.</p>
+          <h2 id="overlayTitle">Enter the arena</h2>
+          <p id="overlayBody">Spin for an arena, then face an equally equipped rival. Win five elimination rounds before your opponent does.</p>
           <div class="modal-actions">
             <button id="startBtn" type="button">Start match</button>
             <button id="restartBtn" type="button">Restart</button>

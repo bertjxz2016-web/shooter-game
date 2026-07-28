@@ -123,6 +123,81 @@ meter {
   font-size: 13px;
 }
 
+.duel-hud {
+  position: absolute;
+  top: 108px;
+  left: 50%;
+  z-index: 4;
+  transform: translateX(-50%);
+  display: grid;
+  grid-template-columns: 112px 96px 112px;
+  align-items: center;
+  min-height: 42px;
+  border: 1px solid rgba(255, 255, 255, .2);
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(6, 9, 14, .86);
+  box-shadow: 0 14px 42px rgba(0, 0, 0, .35);
+  pointer-events: none;
+}
+
+.duel-hud.hidden,
+.round-banner.hidden {
+  display: none;
+}
+
+.duel-side,
+.round-label {
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.duel-side b {
+  font-size: 24px;
+}
+
+.player-side {
+  color: #dff8ff;
+  background: rgba(40, 190, 255, .2);
+  border-right: 1px solid rgba(95, 208, 255, .34);
+}
+
+.rival-side {
+  color: #ffe6e8;
+  background: rgba(255, 71, 87, .2);
+  border-left: 1px solid rgba(255, 93, 99, .34);
+}
+
+.round-label {
+  color: #f7f9fc;
+  font-size: 11px;
+}
+
+.round-banner {
+  position: absolute;
+  left: 50%;
+  top: 34%;
+  z-index: 5;
+  transform: translate(-50%, -50%);
+  color: #fff;
+  font-size: clamp(34px, 6vh, 68px);
+  font-weight: 900;
+  text-align: center;
+  text-shadow: 0 4px 0 rgba(0, 0, 0, .35), 0 0 28px rgba(95, 208, 255, .55);
+  pointer-events: none;
+  animation: round-banner-in 180ms ease-out;
+}
+
+@keyframes round-banner-in {
+  from { transform: translate(-50%, -50%) scale(.78); opacity: 0; }
+  to { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+
 .left-panel,
 .right-panel {
   position: absolute;
@@ -429,6 +504,11 @@ meter {
   .instructions {
     display: none;
   }
+
+  .duel-hud {
+    top: auto;
+    bottom: 262px;
+  }
 }
 
 @media (max-width: 760px) {
@@ -463,6 +543,11 @@ meter {
 
   .top-hud {
     bottom: 118px;
+  }
+
+  .duel-hud {
+    bottom: 278px;
+    grid-template-columns: 88px 80px 88px;
   }
 
   .bars {
