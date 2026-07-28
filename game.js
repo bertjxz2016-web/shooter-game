@@ -113,6 +113,7 @@ const pointer = { locked: false };
 let lastTime = performance.now();
 let wheelTurns = 0;
 let audioContext = null;
+const EXHAUSTION_RECOVERY = 20;
 
 function createStarterInventory() {
   return [
@@ -142,7 +143,7 @@ const state = {
   duelPhase: "menu",
   phaseTimer: 0,
   roundMessage: "",
-  player: { x: 0, y: 0, angle: 0, pitch: 0, health: 150, stamina: 150, z: 0, vz: 0, reload: 0, shootCd: 0, trapped: 0 },
+  player: { x: 0, y: 0, angle: 0, pitch: 0, health: 150, stamina: 150, exhausted: false, z: 0, vz: 0, reload: 0, shootCd: 0, trapped: 0 },
   weaponRank: 1,
   armorRank: 1,
   ammo: 1,
@@ -353,6 +354,7 @@ function spawnEnemies(size) {
       health,
       maxHealth: health,
       stamina: 150,
+      exhausted: false,
       weaponRank: rank,
       armor: isRivalDuel() ? state.armorRank : clamp(Math.floor(rank / 2), 1, armors.length),
       speed: isRivalDuel() ? 132 : rand(42, 75),
@@ -371,7 +373,7 @@ function spawnEnemies(size) {
 
 function resetCombatants(regenerateArena = true) {
   const size = arenaSize();
-  state.player = { x: 0, y: 0, angle: 0, pitch: 0, health: 150, stamina: 150, z: 0, vz: 0, reload: 0, shootCd: 0, trapped: 0 };
+  state.player = { x: 0, y: 0, angle: 0, pitch: 0, health: 150, stamina: 150, exhausted: false, z: 0, vz: 0, reload: 0, shootCd: 0, trapped: 0 };
   state.inventory = createStarterInventory();
   if (state.armorRank >= 16) state.player.health = 190;
   state.ammo = weapon().magazine;
@@ -750,11 +752,26 @@ function enemyShoot(enemy, target, dt) {
   }
 }
 
+function updateExhaustionState(entity, isPlayer) {
+  if (!entity.exhausted && entity.stamina <= 0) {
+    entity.exhausted = true;
+    spawnFloatingText(entity.x, entity.y, "EXHAUSTED", "#ff9a62", 1.1, 68);
+    addChat(isPlayer
+      ? "You are exhausted and cannot move. Rest or drink water."
+      : `${entity.id} is exhausted and cannot move.`);
+  } else if (entity.exhausted && entity.stamina >= EXHAUSTION_RECOVERY) {
+    entity.exhausted = false;
+    spawnFloatingText(entity.x, entity.y, "READY", "#74d7ff", .8, 54);
+    if (isPlayer) addChat("You recovered enough exhaustion to move.");
+  }
+}
+
 function updatePlayer(dt) {
   const p = state.player;
   p.shootCd = Math.max(0, p.shootCd - dt);
   p.reload = Math.max(0, p.reload - dt);
   p.stamina = clamp(p.stamina - 3 * dt, 0, 150);
+  updateExhaustionState(p, true);
   p.health = clamp(p.health - .5 * dt, 0, 220);
   if (p.health <= 0) {
     handlePlayerDefeat("You lost all health over time.");
@@ -770,8 +787,9 @@ function updatePlayer(dt) {
   const back = keys.has("s") || keys.has("arrowdown") ? 1 : 0;
   const left = keys.has("a") || keys.has("arrowleft") ? 1 : 0;
   const right = keys.has("d") || keys.has("arrowright") ? 1 : 0;
-  const moving = forward || back || left || right;
-  const tired = p.stamina < 25 ? .52 : 1;
+  const wantsToMove = Boolean(forward || back || left || right);
+  const moving = wantsToMove && !p.exhausted;
+  const tired = p.exhausted ? 0 : p.stamina < 25 ? .52 : 1;
   const sprinting = keys.has("shift") && moving && p.stamina > 0;
   const speed = 185 * armor().speed * tired * (sprinting ? 1.38 : 1);
   let vx = 0;
@@ -800,10 +818,11 @@ function updatePlayer(dt) {
 
   if (!moving) {
     p.stamina = clamp(p.stamina + 7 * dt, 0, 150);
+    updateExhaustionState(p, true);
     if (state.armorRank === 11 && p.health < 150) p.health = clamp(p.health + 1.5 * dt, 0, 150);
   }
 
-  if (keys.has(" ") && p.z === 0) {
+  if (!p.exhausted && keys.has(" ") && p.z === 0) {
     p.vz = state.armorRank === 15 ? 390 : 285;
   }
   p.vz -= 760 * dt;
@@ -817,6 +836,7 @@ function updatePlayer(dt) {
 
 function updateEnemySupplies(enemy, dt) {
   enemy.stamina = clamp(enemy.stamina - dt, 0, 150);
+  updateExhaustionState(enemy, false);
   enemy.health = clamp(enemy.health - .5 * dt, 0, enemy.maxHealth);
   if (enemy.health <= 0) {
     enemy.alive = false;
@@ -839,6 +859,7 @@ function updateEnemySupplies(enemy, dt) {
   } else if (enemy.stamina <= 90 && enemy.supplies.water > 0) {
     enemy.supplies.water -= 1;
     enemy.stamina = clamp(enemy.stamina + 60, 0, 150);
+    updateExhaustionState(enemy, false);
     enemy.supplyCd = 1.2;
     spawnFloatingText(enemy.x, enemy.y, "+60 EXH", "#74d7ff", .8, 54);
     addChat(`${enemy.id} drank their water.`);
@@ -905,7 +926,7 @@ function updateEnemies(dt) {
     }
 
     const movementLength = Math.hypot(moveX, moveY) || 1;
-    const tired = e.stamina < 25 ? .52 : 1;
+    const tired = e.exhausted ? 0 : e.stamina < 25 ? .52 : 1;
     const caution = healthRatio < .3 ? 1.16 : 1;
     e.x = clamp(e.x + moveX / movementLength * e.speed * tired * caution * dt, -size / 2 + 34, size / 2 - 34);
     e.y = clamp(e.y + moveY / movementLength * e.speed * tired * caution * dt, -size / 2 + 34, size / 2 - 34);
@@ -1634,7 +1655,7 @@ function updateUi() {
   ui.healthMeter.value = p.health;
   ui.staminaMeter.value = p.stamina;
   ui.healthText.textContent = Math.ceil(p.health);
-  ui.staminaText.textContent = Math.ceil(p.stamina);
+  ui.staminaText.textContent = p.exhausted ? "REST" : Math.ceil(p.stamina);
   const minutes = Math.floor(state.time / 60).toString().padStart(2, "0");
   const seconds = Math.floor(state.time % 60).toString().padStart(2, "0");
   ui.clockText.textContent = `${minutes}:${seconds}`;
