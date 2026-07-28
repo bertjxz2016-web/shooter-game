@@ -519,6 +519,10 @@ function shoot() {
     const enemyArmor = armors[hit.armor - 1] || armors[0];
     const damage = w.damage * 4.5 * (1 - enemyArmor.protection * .55);
     hit.health -= damage;
+    if (hit.health > 0) {
+      hit.targetId = "player";
+      hit.targetCd = 4;
+    }
     state.hitMarker = .22;
     playImpactSound(false);
     spawnImpact(hit.x, hit.y, "#ffd27a", 19);
@@ -570,17 +574,17 @@ function findTargetInCrosshair(range) {
 
 function chooseEnemyTarget(enemy) {
   const rivals = state.enemies.filter(candidate => candidate.alive && candidate !== enemy);
-  const pool = rivals.length && Math.random() < .72
-    ? rivals
-    : [state.player, ...rivals];
-  const target = pool
-    .map(candidate => ({
-      candidate,
-      score: dist(enemy, candidate) * rand(.78, 1.28)
-    }))
-    .sort((a, b) => a.score - b.score)[0]?.candidate || state.player;
+  const targetPlayer = !rivals.length || Math.random() < .5;
+  const target = targetPlayer
+    ? state.player
+    : rivals
+      .map(candidate => ({
+        candidate,
+        score: dist(enemy, candidate) * rand(.78, 1.28)
+      }))
+      .sort((a, b) => a.score - b.score)[0].candidate;
   enemy.targetId = target === state.player ? "player" : target.id;
-  enemy.targetCd = rand(.85, 1.9);
+  enemy.targetCd = target === state.player ? rand(1.5, 3) : rand(.85, 1.9);
   return target;
 }
 
@@ -631,7 +635,12 @@ function updatePlayer(dt) {
   const p = state.player;
   p.shootCd = Math.max(0, p.shootCd - dt);
   p.reload = Math.max(0, p.reload - dt);
-  p.stamina = clamp(p.stamina - dt, 0, 150);
+  p.stamina = clamp(p.stamina - 3 * dt, 0, 150);
+  p.health = clamp(p.health - dt, 0, 220);
+  if (p.health <= 0) {
+    endMatch(false, "You lost all health over time.");
+    return;
+  }
   if (p.reload === 0 && state.ammo < weapon().magazine) state.ammo = weapon().magazine;
   if (p.trapped > 0) {
     p.trapped -= dt;
