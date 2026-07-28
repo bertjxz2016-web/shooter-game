@@ -134,6 +134,9 @@ let lastTime = performance.now();
 let wheelTurns = 0;
 let audioContext = null;
 const EXHAUSTION_RECOVERY = 20;
+const MOVE_EXHAUSTION_RATE = 2;
+const SPRINT_EXHAUSTION_RATE = 3;
+const REST_EXHAUSTION_RATE = 4;
 
 function createStarterInventory() {
   return [
@@ -804,27 +807,36 @@ function updatePlayer(dt) {
   const p = state.player;
   p.shootCd = Math.max(0, p.shootCd - dt);
   p.reload = Math.max(0, p.reload - dt);
-  p.stamina = clamp(p.stamina - 3 * dt, 0, 150);
-  updateExhaustionState(p, true);
   p.health = clamp(p.health - .5 * dt, 0, 220);
   if (p.health <= 0) {
     handlePlayerDefeat("You lost all health over time.");
     return;
   }
   if (p.reload === 0 && state.ammo < weapon().magazine) state.ammo = weapon().magazine;
-  if (p.trapped > 0) {
-    p.trapped -= dt;
-    return;
-  }
 
   const forward = keys.has("w") || keys.has("arrowup") ? 1 : 0;
   const back = keys.has("s") || keys.has("arrowdown") ? 1 : 0;
   const left = keys.has("a") || keys.has("arrowleft") ? 1 : 0;
   const right = keys.has("d") || keys.has("arrowright") ? 1 : 0;
   const wantsToMove = Boolean(forward || back || left || right);
-  const moving = wantsToMove && !p.exhausted;
+  let moving = wantsToMove && !p.exhausted && p.trapped <= 0;
+  let sprinting = keys.has("shift") && moving && p.stamina > 0;
+  if (moving) {
+    const drainRate = sprinting ? SPRINT_EXHAUSTION_RATE : MOVE_EXHAUSTION_RATE;
+    p.stamina = clamp(p.stamina - drainRate * dt, 0, 150);
+  } else {
+    p.stamina = clamp(p.stamina + REST_EXHAUSTION_RATE * dt, 0, 150);
+  }
+  updateExhaustionState(p, true);
+
+  if (p.trapped > 0) {
+    p.trapped -= dt;
+    return;
+  }
+
+  moving = wantsToMove && !p.exhausted;
+  sprinting = keys.has("shift") && moving && p.stamina > 0;
   const tired = p.exhausted ? 0 : p.stamina < 25 ? .52 : 1;
-  const sprinting = keys.has("shift") && moving && p.stamina > 0;
   const speed = 185 * armor().speed * tired * (sprinting ? 1.38 : 1);
   let vx = 0;
   let vy = 0;
@@ -851,8 +863,6 @@ function updatePlayer(dt) {
   p.y = clamp(p.y + vy * dt, -size / 2 + 36, size / 2 - 36);
 
   if (!moving) {
-    p.stamina = clamp(p.stamina + 7 * dt, 0, 150);
-    updateExhaustionState(p, true);
     if (state.armorRank === 11 && p.health < 150) p.health = clamp(p.health + 1.5 * dt, 0, 150);
   }
 
