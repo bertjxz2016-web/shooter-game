@@ -445,6 +445,54 @@ meter {
   flex: 1;
 }
 
+.difficulty-picker {
+  margin: 16px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.difficulty-picker legend {
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.segmented-control {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+}
+
+.segmented-control button {
+  min-width: 0;
+  border: 0;
+  border-right: 1px solid var(--edge);
+  border-radius: 0;
+}
+
+.segmented-control button:last-child {
+  border-right: 0;
+}
+
+.segmented-control button[data-difficulty="Easy"].active {
+  background: rgba(103, 224, 138, 0.25);
+  color: #a8f3bd;
+}
+
+.segmented-control button[data-difficulty="Medium"].active {
+  background: rgba(95, 208, 255, 0.25);
+  color: #bcecff;
+}
+
+.segmented-control button[data-difficulty="Hard"].active {
+  background: rgba(255, 93, 99, 0.28);
+  color: #ffb3b6;
+}
+
 .shop-modal {
   width: min(920px, calc(100vw - 28px));
   max-height: min(780px, calc(100vh - 28px));

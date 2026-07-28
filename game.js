@@ -11,6 +11,7 @@ const ui = {
   modeText: document.getElementById("modeText"),
   mapText: document.getElementById("mapText"),
   enemyText: document.getElementById("enemyText"),
+  difficultyText: document.getElementById("difficultyText"),
   weaponText: document.getElementById("weaponText"),
   ammoText: document.getElementById("ammoText"),
   trapText: document.getElementById("trapText"),
@@ -38,7 +39,8 @@ const ui = {
   playerRoundScore: document.getElementById("playerRoundScore"),
   rivalRoundScore: document.getElementById("rivalRoundScore"),
   roundLabel: document.getElementById("roundLabel"),
-  roundBanner: document.getElementById("roundBanner")
+  roundBanner: document.getElementById("roundBanner"),
+  difficultyButtons: [...document.querySelectorAll("[data-difficulty]")]
 };
 
 const maps = [
@@ -51,6 +53,24 @@ const maps = [
   { name: "Mall", sky: "#7b92a5", ground: "#e6d8bd", wall: "#d7d9df", prop: "#f08cb0" },
   { name: "High-rise office", sky: "#506d91", ground: "#29303a", wall: "#c3ccd5", prop: "#84c8ff" }
 ];
+
+const difficultySettings = {
+  Easy: {
+    duelSpeedFactor: .62, roamingSpeed: [40, 62], accuracy: .68,
+    minAccuracy: .1, maxAccuracy: .58, fireDelay: 1.45, damage: .78,
+    playerFocus: .42, reaction: 1.3
+  },
+  Medium: {
+    duelSpeedFactor: .81, roamingSpeed: [58, 88], accuracy: .92,
+    minAccuracy: .16, maxAccuracy: .82, fireDelay: 1, damage: 1,
+    playerFocus: .55, reaction: 1
+  },
+  Hard: {
+    duelSpeedFactor: 1, roamingSpeed: [90, 130], accuracy: 1.18,
+    minAccuracy: .24, maxAccuracy: .94, fireDelay: .72, damage: 1.22,
+    playerFocus: .72, reaction: .72
+  }
+};
 
 const weapons = [
   ["Slingshot", 1, 1.3, 280, 1, 0, 1],
@@ -130,6 +150,7 @@ const state = {
   selectedMap: null,
   map: maps[0],
   mode: "Rival Duel (first to 5)",
+  difficulty: "Medium",
   time: 0,
   lastNoKillCheck: 0,
   lastTrapMinute: 0,
@@ -244,6 +265,10 @@ function armor() {
   return armors[state.armorRank - 1];
 }
 
+function difficulty() {
+  return difficultySettings[state.difficulty] || difficultySettings.Medium;
+}
+
 function addChat(text) {
   const minutes = Math.floor(state.time / 60).toString().padStart(2, "0");
   const seconds = Math.floor(state.time % 60).toString().padStart(2, "0");
@@ -338,6 +363,7 @@ function generateTraps(size) {
 
 function spawnEnemies(size) {
   const names = ["Ridge", "Bolt", "Echo", "Mako", "Vex", "Shade", "Pixel", "Drift", "Nova", "Jett", "Orbit"];
+  const botDifficulty = difficulty();
   state.enemies = [];
   for (let i = 0; i < modeEnemyCount(); i++) {
     const p = randomPoint(size);
@@ -357,8 +383,10 @@ function spawnEnemies(size) {
       exhausted: false,
       weaponRank: rank,
       armor: isRivalDuel() ? state.armorRank : clamp(Math.floor(rank / 2), 1, armors.length),
-      speed: isRivalDuel() ? 132 : rand(42, 75),
-      shootCd: rand(.2, 1.6),
+      speed: isRivalDuel()
+        ? 185 * armor().speed * botDifficulty.duelSpeedFactor
+        : rand(...botDifficulty.roamingSpeed),
+      shootCd: rand(.2, 1.6) * botDifficulty.fireDelay,
       tacticCd: rand(.3, 1.1),
       strafeDir: Math.random() < .5 ? -1 : 1,
       targetCd: rand(0, .8),
@@ -429,12 +457,12 @@ function resetMatch() {
 
   if (isRivalDuel()) {
     startDuelRound(true);
-    addChat(`${state.mode} started on ${state.map.name}. First to 5 rounds wins.`);
+    addChat(`${state.mode} started on ${state.map.name} at ${state.difficulty} difficulty. First to 5 rounds wins.`);
   } else {
     state.duelPhase = "off";
     state.running = true;
     resetCombatants(true);
-    addChat(`${state.mode} started on ${state.map.name}.`);
+    addChat(`${state.mode} started on ${state.map.name} at ${state.difficulty} difficulty.`);
     addChat("Eliminate every opponent before they eliminate you.");
   }
 }
@@ -684,7 +712,8 @@ function findTargetInCrosshair(range) {
 
 function chooseEnemyTarget(enemy) {
   const rivals = state.enemies.filter(candidate => candidate.alive && candidate !== enemy);
-  const targetPlayer = !rivals.length || Math.random() < .5;
+  const botDifficulty = difficulty();
+  const targetPlayer = !rivals.length || Math.random() < botDifficulty.playerFocus;
   const target = targetPlayer
     ? state.player
     : rivals
@@ -696,7 +725,7 @@ function chooseEnemyTarget(enemy) {
       }))
       .sort((a, b) => a.score - b.score)[0].candidate;
   enemy.targetId = target === state.player ? "player" : target.id;
-  enemy.targetCd = target === state.player ? rand(1.5, 3) : rand(.85, 1.9);
+  enemy.targetCd = (target === state.player ? rand(1.5, 3) : rand(.85, 1.9)) * botDifficulty.reaction;
   return target;
 }
 
@@ -708,14 +737,19 @@ function resolveEnemyTarget(enemy) {
 function enemyShoot(enemy, target, dt) {
   if (!enemy.alive || enemy.trapped > 0 || !target) return;
   enemy.shootCd -= dt;
+  const botDifficulty = difficulty();
   const targetIsPlayer = target === state.player;
   const d = dist(enemy, target);
   const w = weapons[enemy.weaponRank - 1];
   if (d < w.range * .75 && enemy.shootCd <= 0) {
-    enemy.shootCd = rand(.65, 1.4) + 1 / w.rate;
+    enemy.shootCd = (rand(.65, 1.4) + 1 / w.rate) * botDifficulty.fireDelay;
     const rangeRatio = clamp(d / (w.range * .75), 0, 1);
     const fatiguePenalty = enemy.stamina < 25 ? .72 : 1;
-    const accuracy = clamp((.84 - rangeRatio * .54) * fatiguePenalty, .2, .84);
+    const accuracy = clamp(
+      (.84 - rangeRatio * .54) * fatiguePenalty * botDifficulty.accuracy,
+      botDifficulty.minAccuracy,
+      botDifficulty.maxAccuracy
+    );
     const didHit = Math.random() < accuracy;
     const shotTarget = didHit
       ? { x: target.x, y: target.y }
@@ -725,10 +759,10 @@ function enemyShoot(enemy, target, dt) {
     if (didHit) {
       spawnImpact(target.x, target.y, targetIsPlayer ? "#ff7b72" : "#ffd27a", 9);
       if (targetIsPlayer) {
-        takeDamage(w.damage * rand(.22, .44), enemy.id);
+        takeDamage(w.damage * rand(.22, .44) * botDifficulty.damage, enemy.id);
       } else {
         const targetArmor = armors[target.armor - 1] || armors[0];
-        const damage = w.damage * rand(.28, .52) * (1 - targetArmor.protection * .55);
+        const damage = w.damage * rand(.28, .52) * (1 - targetArmor.protection * .55) * botDifficulty.damage;
         target.health -= damage;
         spawnFloatingText(target.x, target.y, damage.toFixed(0), "#ffb86b", .65, 44);
         if (target.health > 0) {
@@ -1665,6 +1699,7 @@ function updateUi() {
   ui.enemyText.textContent = isRivalDuel()
     ? `Rival: ${state.enemies[0]?.id || "Waiting"}`
     : `Opponents: ${state.enemies.filter(e => e.alive).length}`;
+  ui.difficultyText.textContent = `Difficulty: ${state.difficulty}`;
   ui.weaponText.textContent = `Weapon: ${weapon().name}`;
   ui.ammoText.textContent = state.player.reload > 0 ? "Reloading..." : `Ammo: ${state.ammo} / ${weapon().magazine}`;
   ui.trapText.textContent = isRivalDuel()
@@ -1693,6 +1728,14 @@ function updateUi() {
     ui.roundBanner.classList.add("hidden");
     ui.rewardText.textContent = "Win: diamonds, level XP, and survival bonuses.";
   }
+}
+
+function renderDifficultyButtons() {
+  ui.difficultyButtons.forEach(button => {
+    const selected = button.dataset.difficulty === state.difficulty;
+    button.classList.toggle("active", selected);
+    button.setAttribute("aria-pressed", selected);
+  });
 }
 
 function countTraps(type) {
@@ -1835,6 +1878,14 @@ ui.modeSelect.addEventListener("change", () => {
   state.mode = ui.modeSelect.value;
   addChat(`Mode set to ${state.mode}.`);
 });
+ui.difficultyButtons.forEach(button => {
+  button.addEventListener("click", () => {
+    state.difficulty = button.dataset.difficulty;
+    renderDifficultyButtons();
+    addChat(`Robot difficulty set to ${state.difficulty}.`);
+    updateUi();
+  });
+});
 ui.startBtn.addEventListener("click", () => {
   if (!state.selectedMap) spinMap();
   if (state.mode.includes("Bedwars") && (state.diamonds < 100 || state.level < 2)) {
@@ -1858,6 +1909,7 @@ ui.closeShopBtn.addEventListener("click", () => ui.shopOverlay.classList.add("hi
 ui.dailyBtn.addEventListener("click", dailySpin);
 
 resize();
+renderDifficultyButtons();
 renderInventory();
 renderShop();
 spinMap();

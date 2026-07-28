@@ -78,6 +78,7 @@
         <div class="panel-block compact">
           <h2>Match</h2>
           <p id="enemyText">Opponents: 0</p>
+          <p id="difficultyText">Difficulty: Medium</p>
           <p id="weaponText">Weapon: Slingshot</p>
           <p id="ammoText">Ammo: 1 / 1</p>
           <p id="trapText">Mines 5 | Holes 8 | Pitfalls 3</p>
@@ -100,6 +101,14 @@
         <div class="modal">
           <h2 id="overlayTitle">Enter the arena</h2>
           <p id="overlayBody">Spin for an arena, then face an equally equipped rival. Win five elimination rounds before your opponent does.</p>
+          <fieldset class="difficulty-picker">
+            <legend>Robot difficulty</legend>
+            <div class="segmented-control">
+              <button type="button" data-difficulty="Easy" aria-pressed="false">Easy</button>
+              <button class="active" type="button" data-difficulty="Medium" aria-pressed="true">Medium</button>
+              <button type="button" data-difficulty="Hard" aria-pressed="false">Hard</button>
+            </div>
+          </fieldset>
           <div class="modal-actions">
             <button id="startBtn" type="button">Start match</button>
             <button id="restartBtn" type="button">Restart</button>
