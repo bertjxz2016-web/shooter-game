@@ -97,6 +97,49 @@ const backgroundThemes = {
   }
 };
 
+const buildingThemes = {
+  "Warehouse": {
+    name: "Operations room", exterior: "#59636b", roof: "#242b31",
+    wall: "#65717a", floor: "#30363b", ceiling: "#20262b", trim: "#d59a4d", accent: "#ffd17f"
+  },
+  "Forest": {
+    name: "Ranger cabin", exterior: "#624a35", roof: "#29372d",
+    wall: "#765b42", floor: "#372a20", ceiling: "#30271f", trim: "#9b744a", accent: "#f2cb81"
+  },
+  "Small city block": {
+    name: "Corner store", exterior: "#777f88", roof: "#30373e",
+    wall: "#737d85", floor: "#343b40", ceiling: "#252c32", trim: "#d9b85c", accent: "#ffe190"
+  },
+  "Space station": {
+    name: "Habitat module", exterior: "#566578", roof: "#182233",
+    wall: "#5d6c7c", floor: "#202936", ceiling: "#121a27", trim: "#52bfdc", accent: "#8be9ff"
+  },
+  "Desert military base": {
+    name: "Field bunker", exterior: "#77745f", roof: "#42463d",
+    wall: "#797763", floor: "#423f35", ceiling: "#32342f", trim: "#bdab68", accent: "#f0d789"
+  },
+  "Abandoned village": {
+    name: "Stone house", exterior: "#756454", roof: "#43332e",
+    wall: "#75675b", floor: "#3b302a", ceiling: "#302724", trim: "#9e7760", accent: "#edba82"
+  },
+  "Mall": {
+    name: "Security office", exterior: "#a7adb1", roof: "#596168",
+    wall: "#a8afb2", floor: "#686b6b", ceiling: "#555d61", trim: "#d77896", accent: "#ffd6e3"
+  },
+  "High-rise office": {
+    name: "Lobby suite", exterior: "#697986", roof: "#2b3540",
+    wall: "#78858e", floor: "#363e44", ceiling: "#252d34", trim: "#6db0d0", accent: "#a8e3ff"
+  }
+};
+
+const INTERIOR_BOUNDS = {
+  minX: -210,
+  maxX: 210,
+  minY: -200,
+  maxY: 210,
+  doorHalfWidth: 72
+};
+
 const difficultySettings = {
   Easy: {
     duelSpeedFactor: .62, roamingSpeed: [40, 62], accuracy: .68,
@@ -201,6 +244,9 @@ const state = {
   time: 0,
   lastNoKillCheck: 0,
   lastTrapMinute: 0,
+  insideBuilding: false,
+  buildingReturn: null,
+  buildingCooldown: 0,
   diamonds: 12,
   level: 1,
   shards: 0,
@@ -346,6 +392,131 @@ function arenaSize() {
   return 1300;
 }
 
+function activeBuilding() {
+  const style = buildingThemes[state.map.name] || buildingThemes.Forest;
+  return {
+    ...style,
+    x: 0,
+    y: Math.min(300, arenaSize() * .25),
+    width: 260,
+    height: 170,
+    interactionRadius: 148,
+    autoEnterRadius: 66
+  };
+}
+
+function nearExteriorEntrance() {
+  const building = activeBuilding();
+  return dist(state.player, building) <= building.interactionRadius;
+}
+
+function nearInteriorExit() {
+  const p = state.player;
+  return p.y <= INTERIOR_BOUNDS.minY + 92
+    && Math.abs(p.x) <= INTERIOR_BOUNDS.doorHalfWidth + 24;
+}
+
+function clearBuildingTransitionEffects() {
+  state.tracers = [];
+  state.particles = [];
+  state.casings = [];
+  state.floatText = [];
+  state.hitMarker = 0;
+  state.shake = 0;
+  state.recoil = 0;
+  state.muzzleFlash = 0;
+  state.damageArc = { life: 0, angle: 0 };
+}
+
+function enterBuilding() {
+  if (!state.running || state.insideBuilding || state.buildingCooldown > 0 || !nearExteriorEntrance()) return false;
+  const building = activeBuilding();
+  const p = state.player;
+  state.buildingReturn = {
+    player: { x: p.x, y: p.y, angle: p.angle, pitch: p.pitch },
+    enemies: state.enemies.map(enemy => ({
+      id: enemy.id,
+      x: enemy.x,
+      y: enemy.y,
+      angle: enemy.angle
+    }))
+  };
+  state.insideBuilding = true;
+  state.buildingCooldown = .8;
+  p.x = 0;
+  p.y = -105;
+  p.angle = Math.PI / 2;
+  p.pitch = 0;
+  p.z = 0;
+  p.vz = 0;
+
+  const livingEnemies = state.enemies.filter(enemy => enemy.alive);
+  livingEnemies.forEach((enemy, index) => {
+    const columns = Math.min(4, Math.max(1, livingEnemies.length));
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    enemy.x = clamp((column - (columns - 1) / 2) * 92, INTERIOR_BOUNDS.minX + 34, INTERIOR_BOUNDS.maxX - 34);
+    enemy.y = clamp(48 + row * 68, 36, INTERIOR_BOUNDS.maxY - 34);
+    enemy.angle = -Math.PI / 2;
+    enemy.shootCd = Math.max(enemy.shootCd, .8);
+    enemy.targetCd = 0;
+  });
+  clearBuildingTransitionEffects();
+  addChat(`You entered the ${building.name}.`);
+  return true;
+}
+
+function exitBuilding(ignoreDoor = false) {
+  if (!state.insideBuilding || state.buildingCooldown > 0) return false;
+  if (!ignoreDoor && !nearInteriorExit()) return false;
+  const building = activeBuilding();
+  const saved = state.buildingReturn;
+  const p = state.player;
+  const savedPlayer = saved?.player || {
+    x: building.x,
+    y: building.y - building.interactionRadius,
+    angle: -Math.PI / 2,
+    pitch: 0
+  };
+  let awayX = savedPlayer.x - building.x;
+  let awayY = savedPlayer.y - building.y;
+  let awayLength = Math.hypot(awayX, awayY);
+  if (awayLength < 1) {
+    awayX = 0;
+    awayY = -1;
+    awayLength = 1;
+  }
+  const exitDistance = building.interactionRadius + 24;
+  const size = arenaSize();
+  p.x = clamp(building.x + awayX / awayLength * exitDistance, -size / 2 + 36, size / 2 - 36);
+  p.y = clamp(building.y + awayY / awayLength * exitDistance, -size / 2 + 36, size / 2 - 36);
+  p.angle = savedPlayer.angle;
+  p.pitch = savedPlayer.pitch;
+  p.z = 0;
+  p.vz = 0;
+
+  for (const enemy of state.enemies) {
+    const enemyReturn = saved?.enemies.find(item => item.id === enemy.id);
+    if (!enemyReturn) continue;
+    enemy.x = enemyReturn.x;
+    enemy.y = enemyReturn.y;
+    enemy.angle = enemyReturn.angle;
+    enemy.shootCd = Math.max(enemy.shootCd, .6);
+    enemy.targetCd = 0;
+  }
+  state.insideBuilding = false;
+  state.buildingReturn = null;
+  state.buildingCooldown = .8;
+  clearBuildingTransitionEffects();
+  addChat(`You left the ${building.name}.`);
+  return true;
+}
+
+function toggleBuilding() {
+  if (state.insideBuilding) exitBuilding();
+  else enterBuilding();
+}
+
 function resize() {
   const dpr = window.devicePixelRatio || 1;
   canvas.width = Math.floor(canvas.clientWidth * dpr);
@@ -433,6 +604,9 @@ function spawnEnemies(size) {
 
 function resetCombatants(regenerateArena = true) {
   const size = arenaSize();
+  state.insideBuilding = false;
+  state.buildingReturn = null;
+  state.buildingCooldown = 0;
   state.player = { x: 0, y: 0, angle: 0, pitch: 0, health: 150, stamina: 150, exhausted: false, z: 0, vz: 0, reload: 0, shootCd: 0, trapped: 0 };
   state.inventory = createStarterInventory();
   if (state.armorRank >= 16) state.player.health = 190;
@@ -834,6 +1008,7 @@ function updateExhaustionState(entity, isPlayer) {
 
 function updatePlayer(dt) {
   const p = state.player;
+  state.buildingCooldown = Math.max(0, state.buildingCooldown - dt);
   p.shootCd = Math.max(0, p.shootCd - dt);
   p.reload = Math.max(0, p.reload - dt);
   p.health = clamp(p.health - .5 * dt, 0, 220);
@@ -887,9 +1062,20 @@ function updatePlayer(dt) {
     vy += Math.sin(p.angle + Math.PI / 2) * speed * .82;
   }
 
-  const size = arenaSize();
-  p.x = clamp(p.x + vx * dt, -size / 2 + 36, size / 2 - 36);
-  p.y = clamp(p.y + vy * dt, -size / 2 + 36, size / 2 - 36);
+  const nextX = p.x + vx * dt;
+  const nextY = p.y + vy * dt;
+  if (state.insideBuilding) {
+    const walkingThroughExit = nextY < INTERIOR_BOUNDS.minY
+      && Math.abs(nextX) <= INTERIOR_BOUNDS.doorHalfWidth;
+    if (walkingThroughExit && exitBuilding(true)) return;
+    p.x = clamp(nextX, INTERIOR_BOUNDS.minX + 24, INTERIOR_BOUNDS.maxX - 24);
+    p.y = clamp(nextY, INTERIOR_BOUNDS.minY + 8, INTERIOR_BOUNDS.maxY - 24);
+  } else {
+    const size = arenaSize();
+    p.x = clamp(nextX, -size / 2 + 36, size / 2 - 36);
+    p.y = clamp(nextY, -size / 2 + 36, size / 2 - 36);
+    if (dist(p, activeBuilding()) <= activeBuilding().autoEnterRadius && enterBuilding()) return;
+  }
 
   if (!moving) {
     if (state.armorRank === 11 && p.health < 150) p.health = clamp(p.health + 1.5 * dt, 0, 150);
@@ -1001,11 +1187,18 @@ function updateEnemies(dt) {
     const movementLength = Math.hypot(moveX, moveY) || 1;
     const tired = e.exhausted ? 0 : e.stamina < 25 ? .52 : 1;
     const caution = healthRatio < .3 ? 1.16 : 1;
-    e.x = clamp(e.x + moveX / movementLength * e.speed * tired * caution * dt, -size / 2 + 34, size / 2 - 34);
-    e.y = clamp(e.y + moveY / movementLength * e.speed * tired * caution * dt, -size / 2 + 34, size / 2 - 34);
+    const enemyNextX = e.x + moveX / movementLength * e.speed * tired * caution * dt;
+    const enemyNextY = e.y + moveY / movementLength * e.speed * tired * caution * dt;
+    if (state.insideBuilding) {
+      e.x = clamp(enemyNextX, INTERIOR_BOUNDS.minX + 26, INTERIOR_BOUNDS.maxX - 26);
+      e.y = clamp(enemyNextY, INTERIOR_BOUNDS.minY + 24, INTERIOR_BOUNDS.maxY - 26);
+    } else {
+      e.x = clamp(enemyNextX, -size / 2 + 34, size / 2 - 34);
+      e.y = clamp(enemyNextY, -size / 2 + 34, size / 2 - 34);
+    }
     e.angle = targetAngle;
     enemyShoot(e, target, dt);
-    checkEntityTraps(e, false);
+    if (!state.insideBuilding) checkEntityTraps(e, false);
   }
 }
 
@@ -1109,7 +1302,7 @@ function update(dt) {
   if (!state.running) return;
   updateEnemies(dt);
   if (!state.running) return;
-  checkEntityTraps(state.player, true);
+  if (!state.insideBuilding) checkEntityTraps(state.player, true);
   updateTrapsByTime();
   updateVisualEffects(dt);
   if (state.time > 1200 && state.time - dt <= 1200) {
@@ -1183,11 +1376,15 @@ function drawWorld() {
   ctx.save();
   ctx.translate(shakeX, shakeY);
   ctx.clearRect(0, 0, width, height);
-  drawSky(width, horizon, theme);
-  drawGroundSurface(width, height, horizon, theme);
-  drawDistantScenery(width, horizon, theme);
-  drawGroundDetail(width, height, horizon, theme);
-  drawHorizonHaze(width, height, horizon, theme);
+  if (state.insideBuilding) {
+    drawBuildingInterior(width, height, horizon, activeBuilding());
+  } else {
+    drawSky(width, horizon, theme);
+    drawGroundSurface(width, height, horizon, theme);
+    drawDistantScenery(width, horizon, theme);
+    drawGroundDetail(width, height, horizon, theme);
+    drawHorizonHaze(width, height, horizon, theme);
+  }
 
   drawSprites(width, height, horizon);
   drawTracers(width, height, horizon);
@@ -1195,6 +1392,7 @@ function drawWorld() {
   drawFloatingText(width, height, horizon);
   drawCasings();
   drawWeapon(width, height);
+  drawBuildingInteraction(width, height);
   ctx.restore();
   drawEnvironmentalVignette(width, height);
   drawCombatOverlay(width, height);
@@ -1539,6 +1737,143 @@ function drawHorizonHaze(width, height, horizon, theme) {
   ctx.fillRect(0, horizon - 34, width, height * .31);
 }
 
+function drawBuildingInterior(width, height, horizon, building) {
+  const roomHorizon = clamp(horizon, height * .3, height * .67);
+  const vanishX = width / 2 - Math.sin(state.player.angle) * width * .08;
+  const backLeft = width * .2;
+  const backRight = width * .8;
+  const backTop = roomHorizon * .28;
+  const backBottom = roomHorizon + height * .1;
+  ctx.save();
+
+  const backWall = ctx.createLinearGradient(0, backTop, 0, backBottom);
+  backWall.addColorStop(0, building.wall);
+  backWall.addColorStop(1, "rgba(29, 34, 37, .98)");
+  ctx.fillStyle = backWall;
+  ctx.fillRect(0, 0, width, backBottom);
+
+  const ceiling = ctx.createLinearGradient(0, 0, 0, roomHorizon);
+  ceiling.addColorStop(0, building.ceiling);
+  ceiling.addColorStop(1, "rgba(54, 62, 66, .96)");
+  ctx.fillStyle = ceiling;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(width, 0);
+  ctx.lineTo(backRight, backTop);
+  ctx.lineTo(backLeft, backTop);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = "rgba(20, 25, 28, .48)";
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(backLeft, backTop);
+  ctx.lineTo(backLeft, backBottom);
+  ctx.lineTo(0, height);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(width, 0);
+  ctx.lineTo(backRight, backTop);
+  ctx.lineTo(backRight, backBottom);
+  ctx.lineTo(width, height);
+  ctx.closePath();
+  ctx.fill();
+
+  const floor = ctx.createLinearGradient(0, roomHorizon, 0, height);
+  floor.addColorStop(0, building.floor);
+  floor.addColorStop(1, "rgba(10, 13, 15, .98)");
+  ctx.fillStyle = floor;
+  ctx.beginPath();
+  ctx.moveTo(backLeft, backBottom);
+  ctx.lineTo(backRight, backBottom);
+  ctx.lineTo(width, height);
+  ctx.lineTo(0, height);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = "rgba(225, 232, 229, .12)";
+  ctx.lineWidth = 1;
+  for (let i = -7; i <= 7; i++) {
+    ctx.beginPath();
+    ctx.moveTo(vanishX, roomHorizon);
+    ctx.lineTo(vanishX + i * width * .13, height);
+    ctx.stroke();
+  }
+  for (let i = 1; i < 10; i++) {
+    const amount = i / 9;
+    const y = roomHorizon + Math.pow(amount, 1.65) * (height - roomHorizon);
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
+    ctx.stroke();
+  }
+
+  const panelShift = Math.sin(state.player.angle) * width * .06;
+  for (let i = 0; i < 4; i++) {
+    const panelWidth = (backRight - backLeft) * .17;
+    const x = backLeft + (i + .5) * (backRight - backLeft) / 4 - panelWidth / 2 + panelShift;
+    const y = backTop + (backBottom - backTop) * .22;
+    ctx.fillStyle = "rgba(9, 15, 19, .58)";
+    ctx.fillRect(x, y, panelWidth, (backBottom - backTop) * .48);
+    ctx.strokeStyle = i % 2 ? building.trim : building.accent;
+    ctx.globalAlpha = .48;
+    ctx.strokeRect(x, y, panelWidth, (backBottom - backTop) * .48);
+  }
+  ctx.globalAlpha = 1;
+
+  for (let i = 0; i < 4; i++) {
+    const amount = (i + 1) / 5;
+    const lightY = 18 + amount * Math.max(28, backTop - 30);
+    const lightWidth = 110 - amount * 48;
+    ctx.shadowColor = building.accent;
+    ctx.shadowBlur = 16;
+    ctx.fillStyle = building.accent;
+    ctx.globalAlpha = .38 + amount * .34;
+    ctx.fillRect(vanishX - lightWidth / 2, lightY, lightWidth, 6);
+  }
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = 1;
+
+  ctx.fillStyle = "rgba(8, 12, 14, .5)";
+  ctx.fillRect(backLeft + 12, backBottom - 34, 76, 34);
+  ctx.fillRect(backRight - 104, backBottom - 48, 92, 48);
+  ctx.fillStyle = building.trim;
+  ctx.globalAlpha = .5;
+  ctx.fillRect(backLeft + 18, backBottom - 30, 64, 5);
+  ctx.fillRect(backRight - 98, backBottom - 43, 80, 5);
+  ctx.restore();
+}
+
+function drawBuildingInteraction(width, height) {
+  if (!state.running) return;
+  const available = state.insideBuilding ? nearInteriorExit() : nearExteriorEntrance();
+  if (!available) return;
+  const building = activeBuilding();
+  const label = state.insideBuilding ? "EXIT" : `ENTER ${building.name.toUpperCase()}`;
+  ctx.save();
+  ctx.font = "700 14px sans-serif";
+  const promptWidth = clamp(ctx.measureText(label).width + 72, 142, Math.min(280, width * .58));
+  const promptHeight = 40;
+  const x = width / 2 - promptWidth / 2;
+  const y = height * .72;
+  ctx.fillStyle = "rgba(7, 11, 14, .84)";
+  ctx.fillRect(x, y, promptWidth, promptHeight);
+  ctx.strokeStyle = building.accent;
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(x, y, promptWidth, promptHeight);
+  ctx.fillStyle = building.accent;
+  ctx.fillRect(x + 7, y + 6, 29, 28);
+  ctx.fillStyle = "#10161b";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("E", x + 21.5, y + 20);
+  ctx.fillStyle = "#f2f5f3";
+  ctx.textAlign = "left";
+  ctx.fillText(label, x + 48, y + 21);
+  ctx.restore();
+}
+
 function drawEnvironmentalVignette(width, height) {
   ctx.save();
   const vignette = ctx.createRadialGradient(
@@ -1565,8 +1900,15 @@ function drawEnvironmentalVignette(width, height) {
 
 function drawSprites(width, height, horizon) {
   const sprites = [];
-  for (const prop of state.props) sprites.push({ kind: "prop", obj: prop, depth: project(prop).z });
-  for (const trap of state.traps) if (trap.active) sprites.push({ kind: "trap", obj: trap, depth: project(trap).z });
+  if (state.insideBuilding) {
+    const exitDoor = { ...activeBuilding(), x: 0, y: INTERIOR_BOUNDS.minY + 8 };
+    sprites.push({ kind: "exitDoor", obj: exitDoor, depth: project(exitDoor).z });
+  } else {
+    const building = activeBuilding();
+    sprites.push({ kind: "building", obj: building, depth: project(building).z });
+    for (const prop of state.props) sprites.push({ kind: "prop", obj: prop, depth: project(prop).z });
+    for (const trap of state.traps) if (trap.active) sprites.push({ kind: "trap", obj: trap, depth: project(trap).z });
+  }
   for (const enemy of state.enemies) if (enemy.alive) sprites.push({ kind: "enemy", obj: enemy, depth: project(enemy).z });
   sprites.sort((a, b) => b.depth - a.depth);
 
@@ -1577,11 +1919,119 @@ function drawSprites(width, height, horizon) {
     if (screenX < -120 || screenX > width + 120) continue;
     const base = horizon + 28000 / point.z;
     const scale = 620 / point.z;
+    if (sprite.kind === "building") drawBuildingExterior(screenX, base, scale, sprite.obj, width, height);
+    if (sprite.kind === "exitDoor") drawInteriorExit(screenX, base, scale, sprite.obj, width, height);
     if (sprite.kind === "prop") drawProp(screenX, base, scale, sprite.obj);
     if (sprite.kind === "trap") drawTrap(screenX, base, scale, sprite.obj);
     if (sprite.kind === "enemy") drawEnemy(screenX, base, scale, sprite.obj);
   }
 
+}
+
+function drawBuildingExterior(x, y, scale, building, screenWidth, screenHeight) {
+  const w = clamp(building.width * scale, 100, screenWidth * .86);
+  const h = clamp(building.height * scale, 82, screenHeight * .76);
+  const nearEntrance = nearExteriorEntrance();
+  ctx.save();
+  ctx.fillStyle = "rgba(4, 7, 9, .42)";
+  ctx.beginPath();
+  ctx.ellipse(x, y + 5, w * .48, Math.max(10, h * .08), 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (nearEntrance) {
+    ctx.shadowColor = building.accent;
+    ctx.shadowBlur = 22;
+  }
+  const facade = ctx.createLinearGradient(x - w / 2, 0, x + w / 2, 0);
+  facade.addColorStop(0, "rgba(25, 31, 34, .98)");
+  facade.addColorStop(.18, building.exterior);
+  facade.addColorStop(.72, building.exterior);
+  facade.addColorStop(1, "rgba(20, 25, 29, .98)");
+  ctx.fillStyle = facade;
+  ctx.fillRect(x - w / 2, y - h, w, h);
+  ctx.shadowBlur = 0;
+
+  const pitchedRoof = ["Forest", "Abandoned village"].includes(state.map.name);
+  if (pitchedRoof) {
+    ctx.fillStyle = building.roof;
+    ctx.beginPath();
+    ctx.moveTo(x - w * .58, y - h);
+    ctx.lineTo(x, y - h * 1.28);
+    ctx.lineTo(x + w * .58, y - h);
+    ctx.closePath();
+    ctx.fill();
+  } else {
+    ctx.fillStyle = building.roof;
+    ctx.fillRect(x - w * .54, y - h * 1.08, w * 1.08, h * .12);
+    ctx.fillStyle = building.trim;
+    ctx.globalAlpha = .54;
+    ctx.fillRect(x - w * .5, y - h, w, Math.max(4, h * .035));
+    ctx.globalAlpha = 1;
+  }
+
+  const windowY = y - h * .68;
+  const windowW = w * .18;
+  const windowH = h * .2;
+  for (const side of [-1, 1]) {
+    const windowX = x + side * w * .27 - windowW / 2;
+    const glass = ctx.createLinearGradient(0, windowY, 0, windowY + windowH);
+    glass.addColorStop(0, "rgba(144, 204, 219, .66)");
+    glass.addColorStop(1, "rgba(24, 42, 50, .88)");
+    ctx.fillStyle = glass;
+    ctx.fillRect(windowX, windowY, windowW, windowH);
+    ctx.strokeStyle = "rgba(224, 238, 239, .38)";
+    ctx.lineWidth = Math.max(1, scale * .7);
+    ctx.strokeRect(windowX, windowY, windowW, windowH);
+    ctx.beginPath();
+    ctx.moveTo(windowX + windowW / 2, windowY);
+    ctx.lineTo(windowX + windowW / 2, windowY + windowH);
+    ctx.stroke();
+  }
+
+  const doorW = w * .2;
+  const doorH = h * .52;
+  const doorX = x - doorW / 2;
+  const doorY = y - doorH;
+  ctx.fillStyle = "rgba(8, 12, 14, .96)";
+  ctx.fillRect(doorX, doorY, doorW, doorH);
+  ctx.strokeStyle = building.accent;
+  ctx.globalAlpha = nearEntrance ? .95 : .5;
+  ctx.lineWidth = Math.max(2, scale);
+  ctx.strokeRect(doorX, doorY, doorW, doorH);
+  ctx.fillStyle = building.accent;
+  ctx.fillRect(doorX + doorW * .72, doorY + doorH * .5, Math.max(3, doorW * .06), Math.max(3, doorW * .06));
+  ctx.globalAlpha = 1;
+
+  ctx.fillStyle = building.trim;
+  ctx.fillRect(x - w * .18, y - h * .94, w * .36, Math.max(5, h * .055));
+  ctx.strokeStyle = "rgba(255,255,255,.16)";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(x - w / 2, y - h, w, h);
+  ctx.restore();
+}
+
+function drawInteriorExit(x, y, scale, building, screenWidth, screenHeight) {
+  const w = clamp(92 * scale, 46, screenWidth * .3);
+  const h = clamp(156 * scale, 78, screenHeight * .68);
+  const nearExit = nearInteriorExit();
+  ctx.save();
+  if (nearExit) {
+    ctx.shadowColor = building.accent;
+    ctx.shadowBlur = 20;
+  }
+  ctx.fillStyle = "rgba(7, 11, 14, .98)";
+  ctx.fillRect(x - w / 2, y - h, w, h);
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = building.accent;
+  ctx.globalAlpha = nearExit ? .95 : .55;
+  ctx.lineWidth = Math.max(2, scale);
+  ctx.strokeRect(x - w / 2, y - h, w, h);
+  ctx.fillStyle = building.accent;
+  ctx.fillRect(x + w * .26, y - h * .5, Math.max(3, w * .055), Math.max(3, w * .055));
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = "rgba(220, 235, 232, .2)";
+  ctx.fillRect(x - w * .32, y - h * .86, w * .64, h * .06);
+  ctx.restore();
 }
 
 function screenPoint(point, width, horizon, lift = 0) {
@@ -2008,7 +2458,9 @@ function updateUi() {
   ui.clockText.textContent = `${minutes}:${seconds}`;
   ui.resourceText.textContent = `Diamonds ${state.diamonds} | Level ${state.level} | Shards ${state.shards}`;
   ui.modeText.textContent = `Mode: ${state.mode}`;
-  ui.mapText.textContent = `Map: ${state.map.name}`;
+  ui.mapText.textContent = state.insideBuilding
+    ? `Map: ${state.map.name} | ${activeBuilding().name}`
+    : `Map: ${state.map.name}`;
   ui.enemyText.textContent = isRivalDuel()
     ? `Rival: ${state.enemies[0]?.id || "Waiting"}`
     : `Opponents: ${state.enemies.filter(e => e.alive).length}`;
@@ -2141,6 +2593,10 @@ function dailySpin() {
 }
 
 function spinMap() {
+  if (state.insideBuilding) {
+    state.buildingCooldown = 0;
+    exitBuilding(true);
+  }
   const index = Math.floor(Math.random() * maps.length);
   state.selectedMap = maps[index];
   state.map = state.selectedMap;
@@ -2167,6 +2623,7 @@ window.addEventListener("keydown", event => {
   if (key >= "1" && key <= "9") useSlot(Number(key) - 1);
   if (key === "r") reload();
   if (key === "f") shoot();
+  if (key === "e" && !event.repeat) toggleBuilding();
   if ([" ", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(key)) event.preventDefault();
 });
 window.addEventListener("keyup", event => keys.delete(event.key.toLowerCase()));
