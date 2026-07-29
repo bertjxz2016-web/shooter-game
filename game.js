@@ -289,6 +289,7 @@ const state = {
   props: [],
   tracers: [],
   particles: [],
+  bulletMarks: [],
   casings: [],
   floatText: [],
   hitMarker: 0,
@@ -720,6 +721,7 @@ function resetCombatants(regenerateArena = true) {
   state.ammo = weapon().magazine;
   state.tracers = [];
   state.particles = [];
+  if (regenerateArena) state.bulletMarks = [];
   state.casings = [];
   state.floatText = [];
   state.hitMarker = 0;
@@ -853,6 +855,141 @@ function shotEndpoint(origin, angle, range) {
   };
 }
 
+function impactAreaKey() {
+  return state.insideBuilding
+    ? `inside:${state.currentBuildingId || activeBuilding().id}`
+    : `outside:${state.map.name}`;
+}
+
+function rayCircleDistance(origin, directionX, directionY, object, radius, maxDistance) {
+  const offsetX = origin.x - object.x;
+  const offsetY = origin.y - object.y;
+  const inside = offsetX * offsetX + offsetY * offsetY < radius * radius;
+  if (inside) return null;
+  const along = offsetX * directionX + offsetY * directionY;
+  const discriminant = along * along - (offsetX * offsetX + offsetY * offsetY - radius * radius);
+  if (discriminant < 0) return null;
+  const distance = -along - Math.sqrt(discriminant);
+  return distance > 18 && distance <= maxDistance ? distance : null;
+}
+
+function impactMaterialFor(object = null) {
+  const type = object?.type || "";
+  const name = object?.name || "";
+  const scene = object?.scene || (backgroundThemes[state.map.name] || backgroundThemes.Forest).scene;
+  if (["barrel", "locker", "console", "radio", "pod", "car", "forklift", "antenna"].includes(type)
+    || ["car", "forklift", "antenna"].includes(name)) return "metal";
+  if (["crate", "shelf", "desk", "chair", "table", "bed", "bench", "cabinet", "counter"].includes(type)
+    || ["tree", "log", "cart"].includes(name)) return "wood";
+  if (["rock", "ruin", "well", "barrier", "pillar"].includes(name)) return "concrete";
+  if (["space", "warehouse"].includes(scene)) return "metal";
+  if (["forest", "village"].includes(scene)) return "wood";
+  if (["desert"].includes(scene)) return "earth";
+  return "concrete";
+}
+
+function traceSurfaceImpact(origin, angle, range, pitch = 0) {
+  const directionX = Math.cos(angle);
+  const directionY = Math.sin(angle);
+  const eyeHeight = 58 + (origin.z || 0);
+  const pitchSlope = Math.tan(pitch || 0);
+  let distance = range;
+  let surface = "ground";
+  let height = 2;
+  let material = impactMaterialFor();
+
+  if (pitchSlope > .035) {
+    const groundDistance = eyeHeight / pitchSlope;
+    if (groundDistance > 18 && groundDistance < distance) distance = groundDistance;
+  }
+
+  if (state.insideBuilding) {
+    if (pitchSlope < -.035) {
+      const ceilingDistance = (188 - eyeHeight) / -pitchSlope;
+      if (ceilingDistance > 18 && ceilingDistance < distance) {
+        distance = ceilingDistance;
+        surface = "ceiling";
+        height = 188;
+      }
+    }
+
+    const distanceX = directionX > .001
+      ? (INTERIOR_BOUNDS.maxX - origin.x) / directionX
+      : directionX < -.001
+        ? (INTERIOR_BOUNDS.minX - origin.x) / directionX
+        : Infinity;
+    const distanceY = directionY > .001
+      ? (INTERIOR_BOUNDS.maxY - origin.y) / directionY
+      : directionY < -.001
+        ? (INTERIOR_BOUNDS.minY - origin.y) / directionY
+        : Infinity;
+    const wallDistance = Math.min(distanceX, distanceY);
+    const wallHeight = eyeHeight - pitchSlope * wallDistance;
+    if (wallDistance > 18 && wallDistance < distance && wallHeight >= 8 && wallHeight <= 188) {
+      distance = wallDistance;
+      surface = "wall";
+      height = wallHeight;
+      material = impactMaterialFor(activeBuilding());
+    }
+  }
+
+  const obstacles = state.insideBuilding
+    ? interiorProps()
+    : [...state.props, ...mapBuildings()];
+  for (const object of obstacles) {
+    const radius = object.radius || object.width * .42 || 34;
+    const objectDistance = rayCircleDistance(origin, directionX, directionY, object, radius, distance);
+    if (objectDistance === null) continue;
+    const objectHeight = object.height || 90;
+    const impactHeight = eyeHeight - pitchSlope * objectDistance;
+    if (impactHeight < 7 || impactHeight > objectHeight) continue;
+    distance = objectDistance;
+    surface = "object";
+    height = impactHeight;
+    material = impactMaterialFor(object);
+  }
+
+  return {
+    x: origin.x + directionX * Math.max(18, distance - (surface === "ground" ? 0 : 2)),
+    y: origin.y + directionY * Math.max(18, distance - (surface === "ground" ? 0 : 2)),
+    distance,
+    height,
+    surface,
+    material,
+    angle
+  };
+}
+
+function spawnSurfaceImpact(impact, incoming = false) {
+  const palettes = {
+    metal: { particle: "#ffc85d", smoke: "#8b959d", rim: "#aeb8bf" },
+    wood: { particle: "#d4a065", smoke: "#8d735e", rim: "#b88958" },
+    concrete: { particle: "#c4c2b8", smoke: "#92918b", rim: "#aaa89f" },
+    earth: { particle: "#ba8756", smoke: "#8a684c", rim: "#9d714c" }
+  };
+  const palette = palettes[impact.material] || palettes.concrete;
+  const life = rand(28, 42);
+  state.bulletMarks.push({
+    ...impact,
+    area: impactAreaKey(),
+    size: rand(incoming ? 5.5 : 6.5, incoming ? 8 : 10),
+    seed: Math.random() * 1000,
+    rim: palette.rim,
+    life,
+    maxLife: life
+  });
+  if (state.bulletMarks.length > 84) state.bulletMarks.splice(0, state.bulletMarks.length - 84);
+  spawnImpact(
+    impact.x,
+    impact.y,
+    palette.particle,
+    impact.material === "metal" ? 13 : 9,
+    impact.height,
+    impact.material,
+    palette.smoke
+  );
+}
+
 function spawnTracer(from, to, color, hit, incoming = false, worldShot = incoming, aimPitch = null) {
   const lifetime = incoming ? .34 : .24;
   state.tracers.push({
@@ -869,8 +1006,9 @@ function spawnTracer(from, to, color, hit, incoming = false, worldShot = incomin
   });
 }
 
-function spawnImpact(x, y, color = "#ffd166", count = 13) {
-  for (let i = 0; i < count; i++) {
+function spawnImpact(x, y, color = "#ffd166", count = 13, height = 18, material = "metal", smokeColor = "#9da5ae") {
+  const sparkCount = material === "metal" ? count : Math.max(4, Math.ceil(count * .55));
+  for (let i = 0; i < sparkCount; i++) {
     state.particles.push({
       x,
       y,
@@ -881,25 +1019,27 @@ function spawnImpact(x, y, color = "#ffd166", count = 13) {
       life: rand(.16, .38),
       maxLife: .38,
       drag: .86,
-      kind: "spark"
+      kind: material === "metal" ? "spark" : "debris",
+      height
     });
   }
   state.particles.push({
     x, y, vx: 0, vy: 0, size: 16, color,
-    life: .22, maxLife: .22, drag: 1, kind: "ring"
+    life: .22, maxLife: .22, drag: 1, kind: "ring", height
   });
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < (material === "metal" ? 4 : 7); i++) {
     state.particles.push({
       x: x + rand(-8, 8),
       y: y + rand(-8, 8),
       vx: rand(-18, 18),
       vy: rand(-18, 18),
-      size: rand(7, 13),
-      color: "#9da5ae",
+      size: rand(material === "metal" ? 7 : 9, material === "metal" ? 13 : 18),
+      color: smokeColor,
       life: rand(.38, .7),
       maxLife: .7,
       drag: .96,
-      kind: "smoke"
+      kind: "smoke",
+      height
     });
   }
 }
@@ -953,12 +1093,16 @@ function shoot() {
   state.ammo -= 1;
   state.player.shootCd = 1 / w.rate;
   playShotSound(state.weaponRank);
-  const hit = findTargetInCrosshair(w.range);
+  const aimedTarget = findTargetInCrosshair(w.range);
+  const aimAngle = state.player.angle + rand(-.018, .018);
+  const surfaceImpact = traceSurfaceImpact(state.player, aimAngle, w.range, state.player.pitch);
+  const targetDistance = aimedTarget ? dist(state.player, aimedTarget) : Infinity;
+  const hit = aimedTarget && targetDistance <= surfaceImpact.distance + 18 ? aimedTarget : null;
   const muzzle = {
     x: state.player.x + Math.cos(state.player.angle) * 46 + Math.cos(state.player.angle + Math.PI / 2) * 14,
     y: state.player.y + Math.sin(state.player.angle) * 46 + Math.sin(state.player.angle + Math.PI / 2) * 14
   };
-  const shotEnd = hit ? { x: hit.x, y: hit.y } : shotEndpoint(state.player, state.player.angle + rand(-.018, .018), w.range);
+  const shotEnd = hit ? { x: hit.x, y: hit.y } : surfaceImpact;
   spawnTracer(muzzle, shotEnd, hit ? "#ffe37a" : "#96e8ff", Boolean(hit), false, false, state.player.pitch);
   ejectCasing();
   state.recoil = Math.max(state.recoil, .34);
@@ -990,7 +1134,8 @@ function shoot() {
       handleAllEnemiesDefeated(`${hit.id} eliminated`);
     }
   } else {
-    spawnImpact(shotEnd.x, shotEnd.y, "#96e8ff", 6);
+    spawnSurfaceImpact(surfaceImpact);
+    playImpactSound(false);
   }
   if (state.ammo <= 0) reload();
 }
@@ -1063,10 +1208,16 @@ function enemyShoot(enemy, target, dt) {
       botDifficulty.minAccuracy,
       botDifficulty.maxAccuracy
     );
-    const didHit = Math.random() < accuracy;
-    const shotTarget = didHit
+    const intendedHit = Math.random() < accuracy;
+    const intendedTarget = intendedHit
       ? { x: target.x, y: target.y }
       : { x: target.x + rand(-150, 150), y: target.y + rand(-150, 150) };
+    const shotAngle = Math.atan2(intendedTarget.y - enemy.y, intendedTarget.x - enemy.x);
+    const shotDistance = Math.min(w.range, dist(enemy, intendedTarget));
+    const surfaceImpact = traceSurfaceImpact(enemy, shotAngle, shotDistance);
+    const blocked = surfaceImpact.distance < shotDistance - 22;
+    const didHit = intendedHit && !blocked;
+    const shotTarget = didHit ? { x: target.x, y: target.y } : surfaceImpact;
     spawnTracer(enemy, shotTarget, didHit ? "#ff7b72" : "#ffb86b", didHit, targetIsPlayer, true);
     playShotSound(enemy.weaponRank, true);
     if (didHit) {
@@ -1094,7 +1245,7 @@ function enemyShoot(enemy, target, dt) {
         }
       }
     } else {
-      spawnImpact(shotTarget.x, shotTarget.y, "#ffb86b", 5);
+      spawnSurfaceImpact(surfaceImpact, true);
     }
   }
 }
@@ -1440,6 +1591,9 @@ function updateVisualEffects(dt) {
       life: p.life - dt
     }))
     .filter(p => p.life > 0);
+  state.bulletMarks = state.bulletMarks
+    .map(mark => ({ ...mark, life: mark.life - dt }))
+    .filter(mark => mark.life > 0);
   state.casings = state.casings
     .map(casing => ({
       ...casing,
@@ -1495,6 +1649,7 @@ function drawWorld() {
     drawHorizonHaze(width, height, horizon, theme);
   }
 
+  drawGroundBulletMarks(width, horizon);
   drawSprites(width, height, horizon);
   drawTracers(width, height, horizon);
   drawParticles(width, height, horizon);
@@ -2022,6 +2177,11 @@ function drawSprites(width, height, horizon) {
     for (const prop of state.props) sprites.push({ kind: "prop", obj: prop, depth: project(prop).z });
     for (const trap of state.traps) if (trap.active) sprites.push({ kind: "trap", obj: trap, depth: project(trap).z });
   }
+  for (const mark of state.bulletMarks) {
+    if (mark.area === impactAreaKey() && mark.surface !== "ground") {
+      sprites.push({ kind: "bulletMark", obj: mark, depth: project(mark).z });
+    }
+  }
   for (const enemy of state.enemies) if (enemy.alive) sprites.push({ kind: "enemy", obj: enemy, depth: project(enemy).z });
   sprites.sort((a, b) => b.depth - a.depth);
 
@@ -2035,11 +2195,87 @@ function drawSprites(width, height, horizon) {
     if (sprite.kind === "building") drawBuildingExterior(screenX, base, scale, sprite.obj, width, height);
     if (sprite.kind === "exitDoor") drawInteriorExit(screenX, base, scale, sprite.obj, width, height);
     if (sprite.kind === "interiorProp") drawInteriorProp(screenX, base, scale, sprite.obj);
+    if (sprite.kind === "bulletMark") drawBulletMark(screenX, base - sprite.obj.height * scale, scale, sprite.obj);
     if (sprite.kind === "prop") drawProp(screenX, base, scale, sprite.obj);
     if (sprite.kind === "trap") drawTrap(screenX, base, scale, sprite.obj);
     if (sprite.kind === "enemy") drawEnemy(screenX, base, scale, sprite.obj);
   }
 
+}
+
+function drawGroundBulletMarks(width, horizon) {
+  const area = impactAreaKey();
+  const visibleMarks = state.bulletMarks
+    .filter(mark => mark.area === area && mark.surface === "ground")
+    .map(mark => ({ mark, point: screenPoint(mark, width, horizon) }))
+    .filter(item => item.point && item.point.x > -40 && item.point.x < width + 40)
+    .sort((a, b) => b.point.depth - a.point.depth);
+  for (const { mark, point } of visibleMarks) {
+    drawBulletMark(point.x, point.y, point.scale, mark, true);
+  }
+}
+
+function drawBulletMark(x, y, scale, mark, ground = false) {
+  const fade = mark.life < 7 ? mark.life / 7 : 1;
+  const size = clamp(mark.size * scale, 2.4, ground ? 18 : 24);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.globalAlpha = fade;
+
+  if (ground) {
+    ctx.rotate(mark.angle - state.player.angle);
+    ctx.fillStyle = "rgba(4, 5, 5, .74)";
+    ctx.beginPath();
+    ctx.ellipse(0, 0, size * 1.45, size * .45, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = mark.rim;
+    ctx.globalAlpha = fade * .52;
+    ctx.lineWidth = Math.max(1, size * .13);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(1, 2, 2, .9)";
+    ctx.globalAlpha = fade;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, size * .62, size * .24, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
+  ctx.fillStyle = mark.rim;
+  ctx.globalAlpha = fade * .64;
+  ctx.beginPath();
+  for (let pointIndex = 0; pointIndex < 12; pointIndex += 1) {
+    const pointAngle = pointIndex / 12 * Math.PI * 2;
+    const radius = size * (.74 + hashNoise(pointIndex, mark.seed) * .42);
+    const pointX = Math.cos(pointAngle) * radius;
+    const pointY = Math.sin(pointAngle) * radius;
+    if (pointIndex === 0) ctx.moveTo(pointX, pointY);
+    else ctx.lineTo(pointX, pointY);
+  }
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = "rgba(1, 2, 3, .92)";
+  ctx.globalAlpha = fade;
+  ctx.beginPath();
+  ctx.arc(0, 0, size * .58, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,.2)";
+  ctx.beginPath();
+  ctx.arc(-size * .17, -size * .18, Math.max(1, size * .12), 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = "rgba(8, 9, 9, .8)";
+  ctx.lineWidth = Math.max(1, size * .1);
+  for (let crackIndex = 0; crackIndex < 6; crackIndex += 1) {
+    const crackAngle = hashNoise(crackIndex, mark.seed + 7) * Math.PI * 2;
+    const crackLength = size * (1.25 + hashNoise(crackIndex, mark.seed + 13) * .9);
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(crackAngle) * size * .48, Math.sin(crackAngle) * size * .48);
+    ctx.lineTo(Math.cos(crackAngle) * crackLength, Math.sin(crackAngle) * crackLength);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 function drawBuildingExterior(x, y, scale, building, screenWidth, screenHeight) {
@@ -2361,7 +2597,7 @@ function drawParticles(width, height, horizon) {
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
   for (const particle of state.particles) {
-    const point = screenPoint(particle, width, horizon, 18);
+    const point = screenPoint(particle, width, horizon, particle.height ?? 18);
     if (!point) continue;
     const alpha = clamp(particle.life / particle.maxLife, 0, 1);
     if (particle.kind === "ring") {
