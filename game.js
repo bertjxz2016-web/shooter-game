@@ -136,7 +136,8 @@ let audioContext = null;
 const EXHAUSTION_RECOVERY = 20;
 const MOVE_EXHAUSTION_RATE = 2;
 const SPRINT_EXHAUSTION_RATE = 3;
-const REST_EXHAUSTION_RATE = 4;
+const REST_EXHAUSTION_RATE = 2;
+const CHARACTER_WORLD_HEIGHT = 118;
 
 function createStarterInventory() {
   return [
@@ -1521,8 +1522,13 @@ function drawTrap(x, y, scale, trap) {
   }
 }
 
+function characterScreenHeight(scale) {
+  const maxHeight = clamp(canvas.clientHeight * .78, 180, 560);
+  return clamp(CHARACTER_WORLD_HEIGHT * scale, 18, maxHeight);
+}
+
 function drawEnemy(x, y, scale, enemy) {
-  const h = clamp(115 * scale, 24, 185);
+  const h = characterScreenHeight(scale);
   const w = h * .34;
   const armorColor = enemy.trapped > 0 ? "#d4a743" : "#8f3438";
   ctx.save();
