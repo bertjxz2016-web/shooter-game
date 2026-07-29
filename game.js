@@ -54,6 +54,49 @@ const maps = [
   { name: "High-rise office", sky: "#506d91", ground: "#29303a", wall: "#c3ccd5", prop: "#84c8ff" }
 ];
 
+const backgroundThemes = {
+  "Warehouse": {
+    scene: "warehouse", skyTop: "#111820", skyMid: "#2a333b", skyHorizon: "#626b70",
+    groundFar: "#55524c", groundNear: "#17191c", haze: "rgba(199, 210, 213, .2)",
+    light: "#ffd79c", cloud: "rgba(222, 230, 232, .2)"
+  },
+  "Forest": {
+    scene: "forest", skyTop: "#315666", skyMid: "#6f988d", skyHorizon: "#c0c5a8",
+    groundFar: "#40583a", groundNear: "#101d13", haze: "rgba(198, 218, 190, .22)",
+    light: "#ffe0a1", cloud: "rgba(239, 242, 224, .42)"
+  },
+  "Small city block": {
+    scene: "city", skyTop: "#384f68", skyMid: "#7790a3", skyHorizon: "#c6b9a5",
+    groundFar: "#555b60", groundNear: "#181b1e", haze: "rgba(210, 214, 216, .24)",
+    light: "#ffd7a3", cloud: "rgba(232, 237, 239, .36)"
+  },
+  "Space station": {
+    scene: "space", skyTop: "#02040d", skyMid: "#0a1024", skyHorizon: "#1d2945",
+    groundFar: "#313b4a", groundNear: "#090d14", haze: "rgba(105, 179, 218, .18)",
+    light: "#75dfff", cloud: "rgba(255, 255, 255, 0)"
+  },
+  "Desert military base": {
+    scene: "desert", skyTop: "#4f7fa2", skyMid: "#b6a37e", skyHorizon: "#e2b06e",
+    groundFar: "#a87945", groundNear: "#3a291b", haze: "rgba(241, 200, 139, .3)",
+    light: "#ffe0a0", cloud: "rgba(241, 229, 204, .24)"
+  },
+  "Abandoned village": {
+    scene: "village", skyTop: "#45576a", skyMid: "#8a8174", skyHorizon: "#c39a73",
+    groundFar: "#665242", groundNear: "#211813", haze: "rgba(207, 187, 167, .24)",
+    light: "#ffd0a0", cloud: "rgba(222, 218, 209, .3)"
+  },
+  "Mall": {
+    scene: "mall", skyTop: "#29343e", skyMid: "#788a94", skyHorizon: "#d7d5ca",
+    groundFar: "#d1c7b6", groundNear: "#403d3b", haze: "rgba(232, 235, 230, .2)",
+    light: "#fff0c2", cloud: "rgba(255, 255, 255, 0)"
+  },
+  "High-rise office": {
+    scene: "office", skyTop: "#324c69", skyMid: "#7592a9", skyHorizon: "#d1c5b5",
+    groundFar: "#414951", groundNear: "#12171c", haze: "rgba(214, 222, 224, .24)",
+    light: "#ffd6a4", cloud: "rgba(235, 240, 242, .28)"
+  }
+};
+
 const difficultySettings = {
   Easy: {
     duelSpeedFactor: .62, roamingSpeed: [40, 62], accuracy: .68,
@@ -1151,31 +1194,17 @@ function drawWorld() {
     height * .08,
     height * .9
   );
-  const m = state.map;
+  const theme = backgroundThemes[state.map.name] || backgroundThemes.Forest;
   ctx.save();
   ctx.translate(shakeX, shakeY);
   ctx.clearRect(0, 0, width, height);
-  const sky = ctx.createLinearGradient(0, 0, 0, horizon);
-  sky.addColorStop(0, m.sky);
-  sky.addColorStop(.58, "#25354a");
-  sky.addColorStop(1, "#111721");
-  ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, width, horizon);
-  drawAtmosphere(width, height, horizon);
-  const ground = ctx.createLinearGradient(0, horizon, 0, height);
-  ground.addColorStop(0, m.ground);
-  ground.addColorStop(.45, "#2a3729");
-  ground.addColorStop(1, "#07090d");
-  ctx.fillStyle = ground;
-  ctx.fillRect(0, horizon, width, height - horizon);
-  const haze = ctx.createLinearGradient(0, horizon - 25, 0, horizon + height * .28);
-  haze.addColorStop(0, "rgba(215,230,236,.16)");
-  haze.addColorStop(1, "rgba(10,13,17,0)");
-  ctx.fillStyle = haze;
-  ctx.fillRect(0, horizon - 25, width, height * .32);
+  drawSky(width, horizon, theme);
+  drawGroundSurface(width, height, horizon, theme);
+  drawDistantScenery(width, horizon, theme);
+  drawGroundDetail(width, height, horizon, theme);
+  drawHorizonHaze(width, height, horizon, theme);
 
   drawArenaWalls(width, height, horizon);
-  drawGroundGrid(width, height, horizon);
   drawSprites(width, height, horizon);
   drawTracers(width, height, horizon);
   drawParticles(width, height, horizon);
@@ -1183,27 +1212,370 @@ function drawWorld() {
   drawCasings();
   drawWeapon(width, height);
   ctx.restore();
+  drawEnvironmentalVignette(width, height);
   drawCombatOverlay(width, height);
 }
 
-function drawAtmosphere(width, height, horizon) {
+function hashNoise(index, seed = 0) {
+  const value = Math.sin(index * 12.9898 + seed * 78.233) * 43758.5453;
+  return value - Math.floor(value);
+}
+
+function wrapScreen(value, span) {
+  return ((value % span) + span) % span;
+}
+
+function backgroundPan(width, factor = 1) {
+  return (state.player.angle / (Math.PI * 2) * width + (state.player.x + state.player.y) * .018) * factor;
+}
+
+function drawSky(width, horizon, theme) {
   ctx.save();
-  ctx.globalAlpha = .22;
-  ctx.fillStyle = "#ffffff";
-  for (let i = 0; i < 7; i++) {
-    const x = (i * 211 + state.time * 9) % (width + 240) - 120;
-    const y = 42 + (i % 3) * 34;
-    ctx.beginPath();
-    ctx.ellipse(x, y, 90, 18, 0, 0, Math.PI * 2);
-    ctx.ellipse(x + 55, y + 8, 70, 16, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.globalAlpha = .18;
-  const glow = ctx.createRadialGradient(width * .78, horizon * .28, 20, width * .78, horizon * .28, width * .38);
-  glow.addColorStop(0, "#ffe37a");
-  glow.addColorStop(1, "transparent");
-  ctx.fillStyle = glow;
+  const sky = ctx.createLinearGradient(0, 0, 0, Math.max(1, horizon));
+  sky.addColorStop(0, theme.skyTop);
+  sky.addColorStop(.56, theme.skyMid);
+  sky.addColorStop(1, theme.skyHorizon);
+  ctx.fillStyle = sky;
   ctx.fillRect(0, 0, width, horizon);
+
+  if (theme.scene === "space") {
+    const pan = backgroundPan(width, .12);
+    for (let i = 0; i < 90; i++) {
+      const x = wrapScreen(hashNoise(i, 2) * width - pan, width);
+      const y = hashNoise(i, 5) * horizon * .9;
+      const radius = hashNoise(i, 9) > .88 ? 1.5 : .7;
+      ctx.globalAlpha = .28 + hashNoise(i, 11) * .68;
+      ctx.fillStyle = i % 11 === 0 ? "#8fe8ff" : "#f4f7ff";
+      ctx.fillRect(x, y, radius, radius);
+    }
+    ctx.globalAlpha = 1;
+    const planetX = width * .78 - Math.sin(state.player.angle * .45) * width * .12;
+    const planetY = horizon * .4;
+    const planetRadius = Math.max(44, horizon * .22);
+    const planet = ctx.createRadialGradient(
+      planetX - planetRadius * .32,
+      planetY - planetRadius * .3,
+      4,
+      planetX,
+      planetY,
+      planetRadius
+    );
+    planet.addColorStop(0, "#9fdfff");
+    planet.addColorStop(.42, "#315b88");
+    planet.addColorStop(.78, "#142440");
+    planet.addColorStop(1, "rgba(5, 8, 18, 0)");
+    ctx.fillStyle = planet;
+    ctx.beginPath();
+    ctx.arc(planetX, planetY, planetRadius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
+  const outdoor = !["warehouse", "mall"].includes(theme.scene);
+  if (outdoor) {
+    const sunX = width * .73 - Math.sin(state.player.angle * .5) * width * .17;
+    const sunY = Math.max(34, horizon * .28);
+    const glow = ctx.createRadialGradient(sunX, sunY, 4, sunX, sunY, Math.max(90, width * .16));
+    glow.addColorStop(0, "rgba(255, 244, 194, .82)");
+    glow.addColorStop(.18, "rgba(255, 214, 142, .28)");
+    glow.addColorStop(1, "rgba(255, 214, 142, 0)");
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, width, horizon);
+    ctx.fillStyle = theme.light;
+    ctx.globalAlpha = .78;
+    ctx.beginPath();
+    ctx.arc(sunX, sunY, Math.max(8, horizon * .026), 0, Math.PI * 2);
+    ctx.fill();
+
+    const span = width + 420;
+    const cloudPan = backgroundPan(width, .22) - state.time * 1.6;
+    ctx.filter = "blur(1px)";
+    for (let i = 0; i < 7; i++) {
+      const x = wrapScreen(i * span / 6 - cloudPan, span) - 210;
+      const y = horizon * (.13 + hashNoise(i, 21) * .38);
+      const size = .58 + hashNoise(i, 29) * .62;
+      ctx.globalAlpha = .14 + hashNoise(i, 33) * .18;
+      ctx.fillStyle = "rgba(32, 42, 51, .42)";
+      ctx.beginPath();
+      ctx.ellipse(x + 8, y + 9, 104 * size, 22 * size, 0, 0, Math.PI * 2);
+      ctx.ellipse(x + 76 * size, y + 13, 74 * size, 17 * size, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = theme.cloud;
+      ctx.beginPath();
+      ctx.ellipse(x, y, 100 * size, 22 * size, 0, 0, Math.PI * 2);
+      ctx.ellipse(x + 58 * size, y - 8 * size, 70 * size, 25 * size, 0, 0, Math.PI * 2);
+      ctx.ellipse(x + 112 * size, y + 3 * size, 62 * size, 18 * size, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.filter = "none";
+  }
+  ctx.restore();
+}
+
+function drawGroundSurface(width, height, horizon, theme) {
+  const ground = ctx.createLinearGradient(0, horizon, 0, height);
+  ground.addColorStop(0, theme.groundFar);
+  ground.addColorStop(.5, state.map.ground);
+  ground.addColorStop(1, theme.groundNear);
+  ctx.fillStyle = ground;
+  ctx.fillRect(0, horizon, width, height - horizon);
+}
+
+function drawRidge(width, horizon, pan, baseY, amplitude, color, seed, spacing = 92) {
+  const offset = -wrapScreen(pan, spacing);
+  const firstIndex = Math.floor(pan / spacing) - 2;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(-spacing, horizon + 24);
+  for (let i = -1; i <= Math.ceil(width / spacing) + 2; i++) {
+    const x = offset + i * spacing;
+    const peak = hashNoise(firstIndex + i, seed);
+    const shoulder = hashNoise(firstIndex + i, seed + 3);
+    ctx.lineTo(x, baseY - peak * amplitude);
+    ctx.lineTo(x + spacing * .48, baseY - shoulder * amplitude * .52);
+  }
+  ctx.lineTo(width + spacing, horizon + 24);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawBuildingLine(width, horizon, pan, color, windowColor, seed, scale = 1) {
+  const spacing = 68 * scale;
+  const offset = -wrapScreen(pan, spacing);
+  const firstIndex = Math.floor(pan / spacing) - 2;
+  for (let i = -1; i <= Math.ceil(width / spacing) + 2; i++) {
+    const index = firstIndex + i;
+    const x = offset + i * spacing;
+    const buildingWidth = spacing * (.58 + hashNoise(index, seed) * .34);
+    const buildingHeight = (48 + hashNoise(index, seed + 2) * 96) * scale;
+    ctx.fillStyle = color;
+    ctx.fillRect(x, horizon - buildingHeight, buildingWidth, buildingHeight + 4);
+    ctx.fillStyle = windowColor;
+    ctx.globalAlpha = .2 + hashNoise(index, seed + 4) * .28;
+    const rows = Math.max(2, Math.floor(buildingHeight / (20 * scale)));
+    for (let row = 0; row < rows; row++) {
+      for (let column = 0; column < 3; column++) {
+        if (hashNoise(index * 17 + row * 3 + column, seed + 7) < .36) continue;
+        ctx.fillRect(
+          x + buildingWidth * (.13 + column * .27),
+          horizon - buildingHeight + 10 * scale + row * 18 * scale,
+          Math.max(2, buildingWidth * .12),
+          Math.max(2, 5 * scale)
+        );
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawDistantScenery(width, horizon, theme) {
+  const pan = backgroundPan(width, .38);
+  ctx.save();
+
+  if (theme.scene === "forest") {
+    drawRidge(width, horizon, pan * .3, horizon - 2, 58, "#415f4f", 4, 110);
+    drawRidge(width, horizon, pan * .55, horizon + 5, 40, "#233d2e", 8, 76);
+    const spacing = 42;
+    const offset = -wrapScreen(pan, spacing);
+    const firstIndex = Math.floor(pan / spacing) - 2;
+    for (let i = -1; i <= Math.ceil(width / spacing) + 2; i++) {
+      const index = firstIndex + i;
+      const x = offset + i * spacing;
+      const treeHeight = 38 + hashNoise(index, 12) * 64;
+      ctx.fillStyle = "#17271d";
+      ctx.fillRect(x - 2, horizon - treeHeight * .48, 4, treeHeight * .5);
+      ctx.fillStyle = index % 2 ? "#24412d" : "#1c3526";
+      ctx.beginPath();
+      ctx.moveTo(x, horizon - treeHeight);
+      ctx.lineTo(x - treeHeight * .25, horizon - treeHeight * .18);
+      ctx.lineTo(x + treeHeight * .25, horizon - treeHeight * .18);
+      ctx.closePath();
+      ctx.fill();
+    }
+  } else if (theme.scene === "city" || theme.scene === "office") {
+    drawBuildingLine(width, horizon, pan * .45, "#34434f", "#ffd9a1", 17, .72);
+    drawBuildingLine(width, horizon, pan * .72, "#222c34", "#9ed8e9", 26, 1);
+    if (theme.scene === "office") {
+      ctx.strokeStyle = "rgba(14, 21, 28, .48)";
+      ctx.lineWidth = 12;
+      for (let x = 0; x <= width; x += Math.max(160, width / 6)) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, horizon + 8);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = "rgba(225, 235, 238, .18)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, horizon * .16);
+      ctx.lineTo(width, horizon * .16);
+      ctx.stroke();
+    }
+  } else if (theme.scene === "desert") {
+    drawRidge(width, horizon, pan * .24, horizon + 2, 92, "#8b6547", 31, 132);
+    drawRidge(width, horizon, pan * .52, horizon + 8, 54, "#5e4936", 37, 94);
+    ctx.fillStyle = "#353a36";
+    for (let i = 0; i < 5; i++) {
+      const x = wrapScreen(i * width * .28 - pan * .65, width + 180) - 90;
+      const towerHeight = 34 + hashNoise(i, 43) * 28;
+      ctx.fillRect(x - 3, horizon - towerHeight, 6, towerHeight);
+      ctx.fillRect(x - 20, horizon - towerHeight, 40, 5);
+      ctx.strokeStyle = "#353a36";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(x - 18, horizon);
+      ctx.lineTo(x, horizon - towerHeight);
+      ctx.lineTo(x + 18, horizon);
+      ctx.stroke();
+    }
+  } else if (theme.scene === "village") {
+    drawRidge(width, horizon, pan * .3, horizon + 3, 62, "#5d5143", 48, 118);
+    const spacing = 92;
+    const offset = -wrapScreen(pan * .68, spacing);
+    const firstIndex = Math.floor(pan * .68 / spacing) - 2;
+    for (let i = -1; i <= Math.ceil(width / spacing) + 2; i++) {
+      const index = firstIndex + i;
+      const x = offset + i * spacing;
+      const houseHeight = 24 + hashNoise(index, 52) * 24;
+      const houseWidth = 48 + hashNoise(index, 55) * 28;
+      ctx.fillStyle = index % 2 ? "#493932" : "#59443a";
+      ctx.fillRect(x - houseWidth / 2, horizon - houseHeight, houseWidth, houseHeight + 3);
+      ctx.fillStyle = "#2a2422";
+      ctx.beginPath();
+      ctx.moveTo(x - houseWidth * .62, horizon - houseHeight);
+      ctx.lineTo(x, horizon - houseHeight - 24);
+      ctx.lineTo(x + houseWidth * .62, horizon - houseHeight);
+      ctx.closePath();
+      ctx.fill();
+      if (index % 3 === 0) ctx.fillRect(x + houseWidth * .22, horizon - houseHeight - 36, 7, 18);
+    }
+  } else if (theme.scene === "warehouse") {
+    ctx.fillStyle = "rgba(8, 12, 16, .72)";
+    ctx.fillRect(0, 0, width, horizon * .3);
+    ctx.strokeStyle = "rgba(184, 198, 204, .28)";
+    ctx.lineWidth = 5;
+    for (let x = -width; x < width * 2; x += 170) {
+      const shifted = x - wrapScreen(pan * .3, 170);
+      ctx.beginPath();
+      ctx.moveTo(width / 2, horizon);
+      ctx.lineTo(shifted, 0);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "rgba(255, 232, 181, .18)";
+    for (let x = 42; x < width; x += 190) ctx.fillRect(x, 18, 86, 12);
+  } else if (theme.scene === "mall") {
+    ctx.fillStyle = "rgba(18, 23, 28, .6)";
+    ctx.fillRect(0, 0, width, horizon * .18);
+    ctx.strokeStyle = "rgba(232, 239, 236, .25)";
+    ctx.lineWidth = 3;
+    for (let x = 0; x <= width; x += Math.max(90, width / 10)) {
+      ctx.beginPath();
+      ctx.moveTo(width / 2, horizon);
+      ctx.lineTo(x, 0);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "rgba(255, 244, 205, .28)";
+    for (let x = 28; x < width; x += 138) ctx.fillRect(x, 24, 74, 8);
+    drawBuildingLine(width, horizon, pan * .4, "#3c464b", "#f7d88f", 61, .55);
+  } else if (theme.scene === "space") {
+    ctx.strokeStyle = "rgba(114, 210, 244, .32)";
+    ctx.lineWidth = 4;
+    for (let x = -80; x < width + 120; x += 180) {
+      const shifted = x - wrapScreen(pan * .45, 180);
+      ctx.beginPath();
+      ctx.moveTo(shifted, horizon);
+      ctx.lineTo(shifted + 90, horizon - 86);
+      ctx.lineTo(shifted + 180, horizon);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "rgba(21, 31, 48, .9)";
+    ctx.fillRect(0, horizon - 16, width, 18);
+    ctx.fillStyle = "rgba(105, 225, 255, .52)";
+    for (let x = 18; x < width; x += 84) ctx.fillRect(x, horizon - 11, 36, 3);
+  }
+  ctx.restore();
+}
+
+function drawGroundDetail(width, height, horizon, theme) {
+  ctx.save();
+  const hardSurface = ["warehouse", "city", "space", "mall", "office"].includes(theme.scene);
+  const vanishX = width / 2;
+  if (hardSurface) {
+    ctx.strokeStyle = theme.scene === "space"
+      ? "rgba(101, 214, 255, .15)"
+      : "rgba(238, 239, 234, .11)";
+    ctx.lineWidth = 1;
+    for (let i = 1; i < 15; i++) {
+      const amount = i / 14;
+      const y = horizon + Math.pow(amount, 1.72) * (height - horizon);
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(width, y);
+      ctx.stroke();
+    }
+    for (let i = -9; i <= 9; i++) {
+      ctx.beginPath();
+      ctx.moveTo(vanishX, horizon);
+      ctx.lineTo(vanishX + i * width * .14, height);
+      ctx.stroke();
+    }
+  } else {
+    const shift = state.player.x * .05 + state.player.y * .08 + backgroundPan(width, .12);
+    ctx.strokeStyle = theme.scene === "desert"
+      ? "rgba(255, 222, 164, .18)"
+      : theme.scene === "forest"
+        ? "rgba(141, 177, 124, .15)"
+        : "rgba(216, 190, 159, .14)";
+    ctx.lineCap = "round";
+    for (let i = 0; i < 92; i++) {
+      const amount = (i + 1) / 92;
+      const y = horizon + Math.pow(amount, 1.62) * (height - horizon);
+      const x = wrapScreen(hashNoise(i, 72) * width - shift * (1 + amount), width);
+      const length = 2 + amount * 16;
+      ctx.globalAlpha = .18 + amount * .68;
+      ctx.lineWidth = .6 + amount * 2;
+      ctx.beginPath();
+      ctx.moveTo(x - length * .5, y);
+      ctx.lineTo(x + length * .5, y + amount * 2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+}
+
+function drawHorizonHaze(width, height, horizon, theme) {
+  const haze = ctx.createLinearGradient(0, horizon - 34, 0, horizon + height * .25);
+  haze.addColorStop(0, "rgba(255, 255, 255, 0)");
+  haze.addColorStop(.3, theme.haze);
+  haze.addColorStop(1, "rgba(8, 12, 16, 0)");
+  ctx.fillStyle = haze;
+  ctx.fillRect(0, horizon - 34, width, height * .31);
+}
+
+function drawEnvironmentalVignette(width, height) {
+  ctx.save();
+  const vignette = ctx.createRadialGradient(
+    width / 2,
+    height * .46,
+    Math.min(width, height) * .2,
+    width / 2,
+    height * .48,
+    Math.max(width, height) * .72
+  );
+  vignette.addColorStop(0, "rgba(0, 0, 0, 0)");
+  vignette.addColorStop(.72, "rgba(0, 0, 0, .08)");
+  vignette.addColorStop(1, "rgba(0, 0, 0, .48)");
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, width, height);
+  const topShade = ctx.createLinearGradient(0, 0, 0, height);
+  topShade.addColorStop(0, "rgba(4, 8, 12, .26)");
+  topShade.addColorStop(.2, "rgba(4, 8, 12, 0)");
+  topShade.addColorStop(1, "rgba(4, 8, 12, .12)");
+  ctx.fillStyle = topShade;
+  ctx.fillRect(0, 0, width, height);
   ctx.restore();
 }
 
@@ -1215,8 +1587,6 @@ function drawArenaWalls(width, height, horizon) {
     { x: size / 2, y: size / 2 },
     { x: -size / 2, y: size / 2 }
   ];
-  ctx.strokeStyle = state.map.wall;
-  ctx.lineWidth = 5;
   for (let i = 0; i < corners.length; i++) {
     const a = project(corners[i]);
     const b = project(corners[(i + 1) % corners.length]);
@@ -1229,29 +1599,33 @@ function drawArenaWalls(width, height, horizon) {
     const by = horizon + 28000 / zb;
     const ah = 58000 / za;
     const bh = 58000 / zb;
+    const wallShade = ctx.createLinearGradient(0, Math.min(ay - ah, by - bh), 0, Math.max(ay, by));
+    wallShade.addColorStop(0, state.map.wall);
+    wallShade.addColorStop(.72, "rgba(50, 56, 59, .88)");
+    wallShade.addColorStop(1, "rgba(12, 15, 18, .94)");
     ctx.beginPath();
     ctx.moveTo(ax, ay - ah);
     ctx.lineTo(bx, by - bh);
     ctx.lineTo(bx, by);
     ctx.lineTo(ax, ay);
     ctx.closePath();
-    ctx.globalAlpha = .55;
-    ctx.fillStyle = state.map.wall;
+    ctx.globalAlpha = .58;
+    ctx.fillStyle = wallShade;
     ctx.fill();
+    ctx.strokeStyle = state.map.wall;
+    ctx.lineWidth = 4;
     ctx.globalAlpha = 1;
     ctx.stroke();
-  }
-}
-
-function drawGroundGrid(width, height, horizon) {
-  ctx.strokeStyle = "rgba(255,255,255,.08)";
-  ctx.lineWidth = 1;
-  for (let i = 0; i < 16; i++) {
-    const y = horizon + Math.pow(i / 15, 1.65) * (height - horizon);
+    ctx.globalAlpha = .28;
+    ctx.strokeStyle = "#f2f5f4";
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(width, y);
+    ctx.moveTo(ax, ay - ah);
+    ctx.lineTo(bx, by - bh);
+    ctx.moveTo((ax + bx) / 2, (ay - ah + by - bh) / 2);
+    ctx.lineTo((ax + bx) / 2, (ay + by) / 2);
     ctx.stroke();
+    ctx.globalAlpha = 1;
   }
 }
 
