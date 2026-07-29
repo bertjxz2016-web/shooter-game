@@ -132,6 +132,28 @@ const buildingThemes = {
   }
 };
 
+const buildingNames = {
+  "Warehouse": ["Operations room", "Loading office", "Tool room", "Storage annex"],
+  "Forest": ["Ranger cabin", "Hunting lodge", "Supply hut", "Fire lookout"],
+  "Small city block": ["Corner store", "Apartment lobby", "Repair shop", "Cafe"],
+  "Space station": ["Habitat module", "Research pod", "Cargo airlock", "Command room"],
+  "Desert military base": ["Field bunker", "Radio post", "Supply depot", "Barracks"],
+  "Abandoned village": ["Stone house", "Old chapel", "Blacksmith shop", "Farmhouse"],
+  "Mall": ["Security office", "Arcade", "Back-room store", "Food court shop"],
+  "High-rise office": ["Lobby suite", "Conference room", "Executive office", "Server room"]
+};
+
+const interiorFurnitureTypes = {
+  warehouse: ["shelf", "crate", "locker", "crate", "desk", "chair", "shelf", "console", "bench", "crate", "locker", "barrel"],
+  forest: ["table", "chair", "bed", "shelf", "crate", "chair", "cabinet", "bench", "plant", "table", "crate", "barrel"],
+  city: ["counter", "shelf", "table", "chair", "cabinet", "crate", "bench", "plant", "desk", "chair", "shelf", "barrel"],
+  space: ["console", "locker", "console", "crate", "pod", "bench", "locker", "console", "crate", "chair", "cabinet", "barrel"],
+  desert: ["crate", "locker", "table", "chair", "bed", "crate", "shelf", "bench", "radio", "barrel", "cabinet", "crate"],
+  village: ["table", "chair", "bed", "shelf", "crate", "bench", "cabinet", "barrel", "table", "chair", "crate", "shelf"],
+  mall: ["counter", "shelf", "bench", "table", "chair", "plant", "cabinet", "crate", "counter", "chair", "shelf", "plant"],
+  office: ["desk", "chair", "cabinet", "plant", "desk", "chair", "shelf", "console", "bench", "plant", "locker", "table"]
+};
+
 const INTERIOR_BOUNDS = {
   minX: -210,
   maxX: 210,
@@ -245,6 +267,7 @@ const state = {
   lastNoKillCheck: 0,
   lastTrapMinute: 0,
   insideBuilding: false,
+  currentBuildingId: null,
   buildingReturn: null,
   buildingCooldown: 0,
   diamonds: 12,
@@ -392,16 +415,92 @@ function arenaSize() {
   return 1300;
 }
 
-function activeBuilding() {
+function mapBuildings() {
   const style = buildingThemes[state.map.name] || buildingThemes.Forest;
-  return {
+  const names = buildingNames[state.map.name] || buildingNames.Forest;
+  const size = arenaSize();
+  const xSpread = Math.min(320, size * .22);
+  const ySpread = Math.min(390, size * .28);
+  const positions = [
+    [-xSpread, ySpread],
+    [xSpread, ySpread],
+    [-xSpread, -ySpread],
+    [xSpread, -ySpread]
+  ];
+  return positions.map(([x, y], index) => ({
     ...style,
-    x: 0,
-    y: Math.min(300, arenaSize() * .25),
-    width: 260,
-    height: 170,
-    interactionRadius: 148,
-    autoEnterRadius: 66
+    id: `${state.map.name}-${index}`,
+    index,
+    scene: (backgroundThemes[state.map.name] || backgroundThemes.Forest).scene,
+    name: names[index],
+    x,
+    y,
+    width: 220,
+    height: 155,
+    interactionRadius: 128,
+    autoEnterRadius: 54
+  }));
+}
+
+function activeBuilding() {
+  const buildings = mapBuildings();
+  if (state.currentBuildingId) {
+    const selected = buildings.find(building => building.id === state.currentBuildingId);
+    if (selected) return selected;
+  }
+  return buildings.reduce((nearest, building) => (
+    dist(state.player, building) < dist(state.player, nearest) ? building : nearest
+  ), buildings[0]);
+}
+
+function interiorProps(building = activeBuilding()) {
+  const types = interiorFurnitureTypes[building.scene] || interiorFurnitureTypes.forest;
+  const positions = [
+    [-166, -78], [166, -72], [-170, 18], [170, 22],
+    [-166, 112], [166, 116], [-145, 178], [-55, 178],
+    [42, 178], [138, 178], [-92, 78], [96, 82]
+  ];
+  const sizeByType = {
+    shelf: [29, 105], locker: [27, 98], cabinet: [30, 86], console: [34, 68],
+    desk: [42, 54], counter: [44, 64], table: [39, 50], chair: [21, 44],
+    bed: [46, 38], pod: [42, 72], bench: [37, 36], plant: [24, 68],
+    crate: [29, 53], barrel: [23, 55], radio: [28, 74]
+  };
+  return positions.map(([x, y], index) => {
+    const type = types[(index + building.index * 2) % types.length];
+    const [radius, height] = sizeByType[type] || [28, 52];
+    return {
+      id: `${building.id}-furniture-${index}`,
+      x: building.index % 2 ? -x : x,
+      y,
+      radius,
+      height,
+      type,
+      tint: index % 3 === 0 ? building.accent : index % 2 ? building.trim : building.exterior
+    };
+  });
+}
+
+function resolveInteriorPosition(currentX, currentY, nextX, nextY, entityRadius = 18) {
+  let x = clamp(nextX, INTERIOR_BOUNDS.minX + 24, INTERIOR_BOUNDS.maxX - 24);
+  let y = clamp(nextY, INTERIOR_BOUNDS.minY + 8, INTERIOR_BOUNDS.maxY - 24);
+  for (const furniture of interiorProps()) {
+    const minDistance = furniture.radius + entityRadius;
+    const gapX = x - furniture.x;
+    const gapY = y - furniture.y;
+    const gap = Math.hypot(gapX, gapY);
+    if (gap >= minDistance) continue;
+    if (gap < 1) {
+      x = currentX;
+      y = currentY;
+      continue;
+    }
+    x = furniture.x + gapX / gap * minDistance;
+    y = furniture.y + gapY / gap * minDistance;
+  }
+  return {
+    x: clamp(x, INTERIOR_BOUNDS.minX + 24, INTERIOR_BOUNDS.maxX - 24),
+    y: clamp(y, INTERIOR_BOUNDS.minY + 8, INTERIOR_BOUNDS.maxY - 24)
   };
 }
 
@@ -433,6 +532,7 @@ function enterBuilding() {
   const building = activeBuilding();
   const p = state.player;
   state.buildingReturn = {
+    buildingId: building.id,
     player: { x: p.x, y: p.y, angle: p.angle, pitch: p.pitch },
     enemies: state.enemies.map(enemy => ({
       id: enemy.id,
@@ -441,6 +541,7 @@ function enterBuilding() {
       angle: enemy.angle
     }))
   };
+  state.currentBuildingId = building.id;
   state.insideBuilding = true;
   state.buildingCooldown = .8;
   p.x = 0;
@@ -451,12 +552,16 @@ function enterBuilding() {
   p.vz = 0;
 
   const livingEnemies = state.enemies.filter(enemy => enemy.alive);
+  const enemyEntryPoints = [
+    [-112, 28], [112, 28], [-34, 82], [34, 82],
+    [-122, 148], [122, 148], [0, 156], [-62, 16],
+    [62, 16], [0, 112], [-72, 132], [72, 132]
+  ];
   livingEnemies.forEach((enemy, index) => {
-    const columns = Math.min(4, Math.max(1, livingEnemies.length));
-    const column = index % columns;
-    const row = Math.floor(index / columns);
-    enemy.x = clamp((column - (columns - 1) / 2) * 92, INTERIOR_BOUNDS.minX + 34, INTERIOR_BOUNDS.maxX - 34);
-    enemy.y = clamp(48 + row * 68, 36, INTERIOR_BOUNDS.maxY - 34);
+    const spawn = enemyEntryPoints[index % enemyEntryPoints.length];
+    const resolved = resolveInteriorPosition(spawn[0], spawn[1], spawn[0], spawn[1], 20);
+    enemy.x = resolved.x;
+    enemy.y = resolved.y;
     enemy.angle = -Math.PI / 2;
     enemy.shootCd = Math.max(enemy.shootCd, .8);
     enemy.targetCd = 0;
@@ -505,6 +610,7 @@ function exitBuilding(ignoreDoor = false) {
     enemy.targetCd = 0;
   }
   state.insideBuilding = false;
+  state.currentBuildingId = null;
   state.buildingReturn = null;
   state.buildingCooldown = .8;
   clearBuildingTransitionEffects();
@@ -605,6 +711,7 @@ function spawnEnemies(size) {
 function resetCombatants(regenerateArena = true) {
   const size = arenaSize();
   state.insideBuilding = false;
+  state.currentBuildingId = null;
   state.buildingReturn = null;
   state.buildingCooldown = 0;
   state.player = { x: 0, y: 0, angle: 0, pitch: 0, health: 150, stamina: 150, exhausted: false, z: 0, vz: 0, reload: 0, shootCd: 0, trapped: 0 };
@@ -1068,8 +1175,9 @@ function updatePlayer(dt) {
     const walkingThroughExit = nextY < INTERIOR_BOUNDS.minY
       && Math.abs(nextX) <= INTERIOR_BOUNDS.doorHalfWidth;
     if (walkingThroughExit && exitBuilding(true)) return;
-    p.x = clamp(nextX, INTERIOR_BOUNDS.minX + 24, INTERIOR_BOUNDS.maxX - 24);
-    p.y = clamp(nextY, INTERIOR_BOUNDS.minY + 8, INTERIOR_BOUNDS.maxY - 24);
+    const resolved = resolveInteriorPosition(p.x, p.y, nextX, nextY, 18);
+    p.x = resolved.x;
+    p.y = resolved.y;
   } else {
     const size = arenaSize();
     p.x = clamp(nextX, -size / 2 + 36, size / 2 - 36);
@@ -1190,8 +1298,9 @@ function updateEnemies(dt) {
     const enemyNextX = e.x + moveX / movementLength * e.speed * tired * caution * dt;
     const enemyNextY = e.y + moveY / movementLength * e.speed * tired * caution * dt;
     if (state.insideBuilding) {
-      e.x = clamp(enemyNextX, INTERIOR_BOUNDS.minX + 26, INTERIOR_BOUNDS.maxX - 26);
-      e.y = clamp(enemyNextY, INTERIOR_BOUNDS.minY + 24, INTERIOR_BOUNDS.maxY - 26);
+      const resolved = resolveInteriorPosition(e.x, e.y, enemyNextX, enemyNextY, 20);
+      e.x = resolved.x;
+      e.y = resolved.y;
     } else {
       e.x = clamp(enemyNextX, -size / 2 + 34, size / 2 - 34);
       e.y = clamp(enemyNextY, -size / 2 + 34, size / 2 - 34);
@@ -1903,9 +2012,13 @@ function drawSprites(width, height, horizon) {
   if (state.insideBuilding) {
     const exitDoor = { ...activeBuilding(), x: 0, y: INTERIOR_BOUNDS.minY + 8 };
     sprites.push({ kind: "exitDoor", obj: exitDoor, depth: project(exitDoor).z });
+    for (const furniture of interiorProps()) {
+      sprites.push({ kind: "interiorProp", obj: furniture, depth: project(furniture).z });
+    }
   } else {
-    const building = activeBuilding();
-    sprites.push({ kind: "building", obj: building, depth: project(building).z });
+    for (const building of mapBuildings()) {
+      sprites.push({ kind: "building", obj: building, depth: project(building).z });
+    }
     for (const prop of state.props) sprites.push({ kind: "prop", obj: prop, depth: project(prop).z });
     for (const trap of state.traps) if (trap.active) sprites.push({ kind: "trap", obj: trap, depth: project(trap).z });
   }
@@ -1921,6 +2034,7 @@ function drawSprites(width, height, horizon) {
     const scale = 620 / point.z;
     if (sprite.kind === "building") drawBuildingExterior(screenX, base, scale, sprite.obj, width, height);
     if (sprite.kind === "exitDoor") drawInteriorExit(screenX, base, scale, sprite.obj, width, height);
+    if (sprite.kind === "interiorProp") drawInteriorProp(screenX, base, scale, sprite.obj);
     if (sprite.kind === "prop") drawProp(screenX, base, scale, sprite.obj);
     if (sprite.kind === "trap") drawTrap(screenX, base, scale, sprite.obj);
     if (sprite.kind === "enemy") drawEnemy(screenX, base, scale, sprite.obj);
@@ -1931,7 +2045,9 @@ function drawSprites(width, height, horizon) {
 function drawBuildingExterior(x, y, scale, building, screenWidth, screenHeight) {
   const w = clamp(building.width * scale, 100, screenWidth * .86);
   const h = clamp(building.height * scale, 82, screenHeight * .76);
-  const nearEntrance = nearExteriorEntrance();
+  const nearest = activeBuilding();
+  const nearEntrance = nearest.id === building.id
+    && dist(state.player, building) <= building.interactionRadius;
   ctx.save();
   ctx.fillStyle = "rgba(4, 7, 9, .42)";
   ctx.beginPath();
@@ -2031,6 +2147,153 @@ function drawInteriorExit(x, y, scale, building, screenWidth, screenHeight) {
   ctx.globalAlpha = 1;
   ctx.fillStyle = "rgba(220, 235, 232, .2)";
   ctx.fillRect(x - w * .32, y - h * .86, w * .64, h * .06);
+  ctx.restore();
+}
+
+function drawInteriorProp(x, y, scale, prop) {
+  const width = clamp(prop.radius * scale * 1.65, 16, 150);
+  const height = clamp(prop.height * scale, 20, 220);
+  const left = x - width / 2;
+  const top = y - height;
+  const dark = "rgba(12, 17, 20, .96)";
+  const edge = "rgba(236, 243, 240, .28)";
+  const light = prop.tint;
+
+  ctx.save();
+  ctx.fillStyle = "rgba(3, 5, 7, .42)";
+  ctx.beginPath();
+  ctx.ellipse(x, y + 3, width * .54, Math.max(4, width * .13), 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  if (prop.type === "crate") {
+    ctx.fillStyle = light;
+    ctx.fillRect(left, top, width, height);
+    ctx.fillStyle = "rgba(18, 22, 23, .34)";
+    ctx.fillRect(left + width * .12, top + height * .12, width * .76, height * .76);
+    ctx.strokeStyle = "rgba(250, 242, 216, .48)";
+    ctx.lineWidth = Math.max(1.5, scale * 1.2);
+    ctx.beginPath();
+    ctx.moveTo(left + width * .13, top + height * .14);
+    ctx.lineTo(left + width * .87, top + height * .86);
+    ctx.moveTo(left + width * .87, top + height * .14);
+    ctx.lineTo(left + width * .13, top + height * .86);
+    ctx.stroke();
+  } else if (prop.type === "barrel") {
+    const gradient = ctx.createLinearGradient(left, 0, left + width, 0);
+    gradient.addColorStop(0, dark);
+    gradient.addColorStop(.45, light);
+    gradient.addColorStop(1, "rgba(15, 21, 23, .96)");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(left, top + height * .08, width, height * .84);
+    ctx.beginPath();
+    ctx.ellipse(x, top + height * .08, width / 2, width * .14, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = edge;
+    ctx.lineWidth = Math.max(1, scale);
+    for (const lineY of [top + height * .22, top + height * .72]) {
+      ctx.beginPath();
+      ctx.moveTo(left, lineY);
+      ctx.lineTo(left + width, lineY);
+      ctx.stroke();
+    }
+  } else if (["shelf", "locker", "cabinet"].includes(prop.type)) {
+    ctx.fillStyle = dark;
+    ctx.fillRect(left, top, width, height);
+    ctx.fillStyle = light;
+    ctx.globalAlpha = .7;
+    ctx.fillRect(left + width * .08, top + height * .05, width * .84, height * .9);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = edge;
+    ctx.lineWidth = Math.max(1, scale);
+    if (prop.type === "shelf") {
+      for (let row = 1; row < 4; row += 1) {
+        const shelfY = top + height * row / 4;
+        ctx.beginPath();
+        ctx.moveTo(left + width * .08, shelfY);
+        ctx.lineTo(left + width * .92, shelfY);
+        ctx.stroke();
+      }
+      ctx.fillStyle = "rgba(237, 193, 91, .62)";
+      ctx.fillRect(left + width * .18, top + height * .56, width * .25, height * .14);
+      ctx.fillStyle = "rgba(105, 145, 132, .72)";
+      ctx.fillRect(left + width * .57, top + height * .31, width * .22, height * .18);
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(x, top + height * .06);
+      ctx.lineTo(x, top + height * .94);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(225, 235, 232, .72)";
+      ctx.fillRect(x - width * .16, top + height * .5, width * .07, Math.max(2, height * .03));
+      ctx.fillRect(x + width * .09, top + height * .5, width * .07, Math.max(2, height * .03));
+    }
+  } else if (["console", "radio"].includes(prop.type)) {
+    ctx.fillStyle = dark;
+    ctx.fillRect(left, top + height * .18, width, height * .82);
+    ctx.fillStyle = "rgba(7, 17, 21, .98)";
+    ctx.fillRect(left + width * .1, top + height * .08, width * .8, height * .43);
+    ctx.shadowColor = light;
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = light;
+    ctx.fillRect(left + width * .16, top + height * .14, width * .68, height * .28);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "rgba(7, 12, 14, .72)";
+    ctx.fillRect(left + width * .23, top + height * .21, width * .42, Math.max(2, height * .035));
+    ctx.fillStyle = "#f4d36e";
+    for (let button = 0; button < 3; button += 1) {
+      ctx.fillRect(left + width * (.2 + button * .2), top + height * .67, Math.max(3, width * .07), Math.max(3, width * .07));
+    }
+  } else if (["desk", "counter", "table", "bench"].includes(prop.type)) {
+    const topHeight = Math.max(6, height * .18);
+    ctx.fillStyle = light;
+    ctx.fillRect(left, top, width, topHeight);
+    ctx.fillStyle = dark;
+    if (prop.type === "counter") {
+      ctx.fillRect(left + width * .06, top + topHeight, width * .88, height - topHeight);
+      ctx.fillStyle = "rgba(238, 241, 232, .18)";
+      ctx.fillRect(left + width * .14, top + height * .38, width * .72, height * .42);
+    } else {
+      const legWidth = Math.max(4, width * .11);
+      ctx.fillRect(left + width * .1, top + topHeight, legWidth, height - topHeight);
+      ctx.fillRect(left + width * .79, top + topHeight, legWidth, height - topHeight);
+      if (prop.type === "desk") {
+        ctx.fillStyle = "rgba(11, 16, 18, .9)";
+        ctx.fillRect(left + width * .26, top + topHeight, width * .48, height * .45);
+      }
+    }
+  } else if (prop.type === "chair") {
+    const seatY = top + height * .58;
+    ctx.fillStyle = light;
+    ctx.fillRect(left + width * .08, top, width * .84, height * .5);
+    ctx.fillRect(left, seatY, width, Math.max(5, height * .16));
+    ctx.fillStyle = dark;
+    ctx.fillRect(left + width * .12, seatY + height * .13, width * .13, height * .29);
+    ctx.fillRect(left + width * .75, seatY + height * .13, width * .13, height * .29);
+  } else if (["bed", "pod"].includes(prop.type)) {
+    ctx.fillStyle = dark;
+    ctx.fillRect(left, top + height * .34, width, height * .66);
+    ctx.fillStyle = light;
+    ctx.fillRect(left + width * .05, top + height * .24, width * .9, height * .5);
+    ctx.fillStyle = "rgba(230, 239, 232, .68)";
+    ctx.fillRect(left + width * .62, top + height * .3, width * .27, height * .18);
+    if (prop.type === "pod") {
+      ctx.strokeStyle = "rgba(130, 232, 255, .74)";
+      ctx.lineWidth = Math.max(2, scale);
+      ctx.strokeRect(left + width * .05, top + height * .24, width * .9, height * .5);
+    }
+  } else if (prop.type === "plant") {
+    ctx.fillStyle = "rgba(105, 78, 55, .98)";
+    ctx.fillRect(left + width * .27, top + height * .65, width * .46, height * .35);
+    ctx.fillStyle = "#4f8b5c";
+    for (const [leafX, leafY, leafSize] of [[.5, .2, .28], [.28, .4, .23], [.72, .42, .24], [.46, .48, .3]]) {
+      ctx.beginPath();
+      ctx.ellipse(left + width * leafX, top + height * leafY, width * leafSize, height * .16, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  ctx.strokeStyle = edge;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(left, top, width, height);
   ctx.restore();
 }
 
