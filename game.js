@@ -370,26 +370,11 @@ function generateProps(size) {
   }[state.map.name] || ["cover"];
 
   state.props = [];
-  if (isRivalDuel()) {
-    const duelCover = [
-      [-260, -210], [-260, 210], [260, -210], [260, 210],
-      [-90, -250], [-90, 250], [90, -250], [90, 250],
-      [-330, 0], [330, 0], [0, -110], [0, 110]
-    ];
-    state.props = duelCover.map(([x, y], i) => ({
-      x,
-      y,
-      radius: i < 4 ? 52 : 38,
-      height: i < 4 ? 135 : 92,
-      name: i % 2 ? "barrier" : "cover",
-      type: i % 3 === 0 ? "buildWall" : "cover",
-      tint: i % 2 ? "#37b8ef" : "#ec5463"
-    }));
-    return;
-  }
+  if (isRivalDuel()) return;
+
   for (let i = 0; i < 32; i++) {
     const p = randomPoint(size);
-    const type = i % 7 === 0 ? "ramp" : i % 5 === 0 ? "buildWall" : i % 3 === 0 ? "cover" : "crate";
+    const type = i % 7 === 0 ? "ramp" : i % 3 === 0 ? "cover" : "crate";
     state.props.push({
       ...p,
       radius: rand(24, 58),
@@ -1204,7 +1189,6 @@ function drawWorld() {
   drawGroundDetail(width, height, horizon, theme);
   drawHorizonHaze(width, height, horizon, theme);
 
-  drawArenaWalls(width, height, horizon);
   drawSprites(width, height, horizon);
   drawTracers(width, height, horizon);
   drawParticles(width, height, horizon);
@@ -1579,56 +1563,6 @@ function drawEnvironmentalVignette(width, height) {
   ctx.restore();
 }
 
-function drawArenaWalls(width, height, horizon) {
-  const size = arenaSize();
-  const corners = [
-    { x: -size / 2, y: -size / 2 },
-    { x: size / 2, y: -size / 2 },
-    { x: size / 2, y: size / 2 },
-    { x: -size / 2, y: size / 2 }
-  ];
-  for (let i = 0; i < corners.length; i++) {
-    const a = project(corners[i]);
-    const b = project(corners[(i + 1) % corners.length]);
-    if (a.z < 30 && b.z < 30) continue;
-    const za = Math.max(30, a.z);
-    const zb = Math.max(30, b.z);
-    const ax = width / 2 + a.x / za * 560;
-    const bx = width / 2 + b.x / zb * 560;
-    const ay = horizon + 28000 / za;
-    const by = horizon + 28000 / zb;
-    const ah = 58000 / za;
-    const bh = 58000 / zb;
-    const wallShade = ctx.createLinearGradient(0, Math.min(ay - ah, by - bh), 0, Math.max(ay, by));
-    wallShade.addColorStop(0, state.map.wall);
-    wallShade.addColorStop(.72, "rgba(50, 56, 59, .88)");
-    wallShade.addColorStop(1, "rgba(12, 15, 18, .94)");
-    ctx.beginPath();
-    ctx.moveTo(ax, ay - ah);
-    ctx.lineTo(bx, by - bh);
-    ctx.lineTo(bx, by);
-    ctx.lineTo(ax, ay);
-    ctx.closePath();
-    ctx.globalAlpha = .58;
-    ctx.fillStyle = wallShade;
-    ctx.fill();
-    ctx.strokeStyle = state.map.wall;
-    ctx.lineWidth = 4;
-    ctx.globalAlpha = 1;
-    ctx.stroke();
-    ctx.globalAlpha = .28;
-    ctx.strokeStyle = "#f2f5f4";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(ax, ay - ah);
-    ctx.lineTo(bx, by - bh);
-    ctx.moveTo((ax + bx) / 2, (ay - ah + by - bh) / 2);
-    ctx.lineTo((ax + bx) / 2, (ay + by) / 2);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-  }
-}
-
 function drawSprites(width, height, horizon) {
   const sprites = [];
   for (const prop of state.props) sprites.push({ kind: "prop", obj: prop, depth: project(prop).z });
@@ -1847,17 +1781,6 @@ function drawProp(x, y, scale, prop) {
       ctx.lineTo(x + w * .52, y - i * h * .22);
       ctx.stroke();
     }
-  } else if (prop.type === "buildWall") {
-    ctx.fillStyle = "rgba(111, 197, 255, .62)";
-    ctx.fillRect(x - w * .72, y - h, w * 1.44, h);
-    ctx.strokeRect(x - w * .72, y - h, w * 1.44, h);
-    ctx.strokeStyle = "rgba(255,255,255,.22)";
-    ctx.beginPath();
-    ctx.moveTo(x - w * .72, y - h * .5);
-    ctx.lineTo(x + w * .72, y - h * .5);
-    ctx.moveTo(x, y - h);
-    ctx.lineTo(x, y);
-    ctx.stroke();
   } else {
     ctx.fillStyle = prop.tint || state.map.prop;
     ctx.fillRect(x - w / 2, y - h, w, h);
