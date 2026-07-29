@@ -893,10 +893,12 @@ function traceSurfaceImpact(origin, angle, range, pitch = 0) {
   const directionY = Math.sin(angle);
   const eyeHeight = 58 + (origin.z || 0);
   const pitchSlope = Math.tan(pitch || 0);
+  const building = state.insideBuilding ? activeBuilding() : null;
   let distance = range;
   let surface = "ground";
   let height = 2;
   let material = impactMaterialFor();
+  let surfaceColor = building?.floor || state.map.ground;
 
   if (pitchSlope > .035) {
     const groundDistance = eyeHeight / pitchSlope;
@@ -910,6 +912,7 @@ function traceSurfaceImpact(origin, angle, range, pitch = 0) {
         distance = ceilingDistance;
         surface = "ceiling";
         height = 188;
+        surfaceColor = building.ceiling;
       }
     }
 
@@ -929,7 +932,8 @@ function traceSurfaceImpact(origin, angle, range, pitch = 0) {
       distance = wallDistance;
       surface = "wall";
       height = wallHeight;
-      material = impactMaterialFor(activeBuilding());
+      material = impactMaterialFor(building);
+      surfaceColor = building.wall;
     }
   }
 
@@ -947,6 +951,7 @@ function traceSurfaceImpact(origin, angle, range, pitch = 0) {
     surface = "object";
     height = impactHeight;
     material = impactMaterialFor(object);
+    surfaceColor = object.tint || object.exterior || object.wall || surfaceColor;
   }
 
   return {
@@ -956,8 +961,28 @@ function traceSurfaceImpact(origin, angle, range, pitch = 0) {
     height,
     surface,
     material,
+    surfaceColor,
     angle
   };
+}
+
+function mixHexColors(base, overlay, amount) {
+  const parse = color => {
+    const match = /^#([0-9a-f]{6})$/i.exec(color || "");
+    if (!match) return null;
+    return [
+      Number.parseInt(match[1].slice(0, 2), 16),
+      Number.parseInt(match[1].slice(2, 4), 16),
+      Number.parseInt(match[1].slice(4, 6), 16)
+    ];
+  };
+  const from = parse(base);
+  const to = parse(overlay);
+  if (!from || !to) return overlay;
+  const channel = index => Math.round(from[index] + (to[index] - from[index]) * amount)
+    .toString(16)
+    .padStart(2, "0");
+  return `#${channel(0)}${channel(1)}${channel(2)}`;
 }
 
 function spawnSurfaceImpact(impact, incoming = false) {
@@ -968,13 +993,15 @@ function spawnSurfaceImpact(impact, incoming = false) {
     earth: { particle: "#ba8756", smoke: "#8a684c", rim: "#9d714c" }
   };
   const palette = palettes[impact.material] || palettes.concrete;
+  const surfaceColor = impact.surfaceColor || state.map.wall;
   const life = rand(28, 42);
   state.bulletMarks.push({
     ...impact,
     area: impactAreaKey(),
-    size: rand(incoming ? 5.5 : 6.5, incoming ? 8 : 10),
+    size: rand(incoming ? 4.2 : 4.8, incoming ? 6.2 : 7.2),
     seed: Math.random() * 1000,
-    rim: palette.rim,
+    rim: mixHexColors(surfaceColor, palette.rim, impact.material === "metal" ? .34 : .2),
+    soot: mixHexColors(surfaceColor, "#050708", .72),
     life,
     maxLife: life
   });
@@ -986,7 +1013,8 @@ function spawnSurfaceImpact(impact, incoming = false) {
     impact.material === "metal" ? 13 : 9,
     impact.height,
     impact.material,
-    palette.smoke
+    palette.smoke,
+    true
   );
 }
 
@@ -1006,7 +1034,17 @@ function spawnTracer(from, to, color, hit, incoming = false, worldShot = incomin
   });
 }
 
-function spawnImpact(x, y, color = "#ffd166", count = 13, height = 18, material = "metal", smokeColor = "#9da5ae") {
+function spawnImpact(
+  x,
+  y,
+  color = "#ffd166",
+  count = 13,
+  height = 18,
+  material = "metal",
+  smokeColor = "#9da5ae",
+  surfaceEffect = false
+) {
+  const effectArea = surfaceEffect ? impactAreaKey() : null;
   const sparkCount = material === "metal" ? count : Math.max(4, Math.ceil(count * .55));
   for (let i = 0; i < sparkCount; i++) {
     state.particles.push({
@@ -1020,12 +1058,15 @@ function spawnImpact(x, y, color = "#ffd166", count = 13, height = 18, material 
       maxLife: .38,
       drag: .86,
       kind: material === "metal" ? "spark" : "debris",
-      height
+      height,
+      surfaceEffect,
+      area: effectArea
     });
   }
   state.particles.push({
     x, y, vx: 0, vy: 0, size: 16, color,
-    life: .22, maxLife: .22, drag: 1, kind: "ring", height
+    life: .22, maxLife: .22, drag: 1, kind: "ring", height,
+    surfaceEffect, area: effectArea
   });
   for (let i = 0; i < (material === "metal" ? 4 : 7); i++) {
     state.particles.push({
@@ -1039,7 +1080,9 @@ function spawnImpact(x, y, color = "#ffd166", count = 13, height = 18, material 
       maxLife: .7,
       drag: .96,
       kind: "smoke",
-      height
+      height,
+      surfaceEffect,
+      area: effectArea
     });
   }
 }
@@ -2195,12 +2238,34 @@ function drawSprites(width, height, horizon) {
     if (sprite.kind === "building") drawBuildingExterior(screenX, base, scale, sprite.obj, width, height);
     if (sprite.kind === "exitDoor") drawInteriorExit(screenX, base, scale, sprite.obj, width, height);
     if (sprite.kind === "interiorProp") drawInteriorProp(screenX, base, scale, sprite.obj);
-    if (sprite.kind === "bulletMark") drawBulletMark(screenX, base - sprite.obj.height * scale, scale, sprite.obj);
+    if (sprite.kind === "bulletMark") {
+      const markY = base - sprite.obj.height * scale;
+      if (!surfaceEffectOccludedByEnemy(screenX, markY, point.z, width, horizon)) {
+        drawBulletMark(screenX, markY, scale, sprite.obj);
+      }
+    }
     if (sprite.kind === "prop") drawProp(screenX, base, scale, sprite.obj);
     if (sprite.kind === "trap") drawTrap(screenX, base, scale, sprite.obj);
     if (sprite.kind === "enemy") drawEnemy(screenX, base, scale, sprite.obj);
   }
 
+}
+
+function surfaceEffectOccludedByEnemy(x, y, effectDepth, width, horizon) {
+  for (const enemy of state.enemies) {
+    if (!enemy.alive) continue;
+    const enemyPoint = project(enemy);
+    if (enemyPoint.z < 26 || enemyPoint.z >= effectDepth - 2) continue;
+    const enemyX = width / 2 + enemyPoint.x / enemyPoint.z * 560;
+    const enemyBase = horizon + 28000 / enemyPoint.z;
+    const enemyScale = 620 / enemyPoint.z;
+    const enemyHeight = characterScreenHeight(enemyScale);
+    const enemyWidth = enemyHeight * .34;
+    const insideHorizontal = x >= enemyX - enemyWidth * .84 && x <= enemyX + enemyWidth * 1.68;
+    const insideVertical = y >= enemyBase - enemyHeight - 16 && y <= enemyBase + 7;
+    if (insideHorizontal && insideVertical) return true;
+  }
+  return false;
 }
 
 function drawGroundBulletMarks(width, horizon) {
@@ -2217,36 +2282,37 @@ function drawGroundBulletMarks(width, horizon) {
 
 function drawBulletMark(x, y, scale, mark, ground = false) {
   const fade = mark.life < 7 ? mark.life / 7 : 1;
-  const size = clamp(mark.size * scale, 2.4, ground ? 18 : 24);
+  const size = clamp(mark.size * scale, 2.2, ground ? 15 : 18);
   ctx.save();
   ctx.translate(x, y);
   ctx.globalAlpha = fade;
 
   if (ground) {
     ctx.rotate(mark.angle - state.player.angle);
-    ctx.fillStyle = "rgba(4, 5, 5, .74)";
+    ctx.fillStyle = mark.soot || "rgba(4, 5, 5, .68)";
+    ctx.globalAlpha = fade * .68;
     ctx.beginPath();
-    ctx.ellipse(0, 0, size * 1.45, size * .45, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, size * 1.32, size * .4, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = mark.rim;
-    ctx.globalAlpha = fade * .52;
-    ctx.lineWidth = Math.max(1, size * .13);
+    ctx.globalAlpha = fade * .36;
+    ctx.lineWidth = Math.max(1, size * .1);
     ctx.stroke();
-    ctx.fillStyle = "rgba(1, 2, 2, .9)";
-    ctx.globalAlpha = fade;
+    ctx.fillStyle = "rgba(1, 2, 2, .74)";
+    ctx.globalAlpha = fade * .82;
     ctx.beginPath();
-    ctx.ellipse(0, 0, size * .62, size * .24, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, size * .55, size * .2, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
     return;
   }
 
   ctx.fillStyle = mark.rim;
-  ctx.globalAlpha = fade * .64;
+  ctx.globalAlpha = fade * .42;
   ctx.beginPath();
   for (let pointIndex = 0; pointIndex < 12; pointIndex += 1) {
     const pointAngle = pointIndex / 12 * Math.PI * 2;
-    const radius = size * (.74 + hashNoise(pointIndex, mark.seed) * .42);
+    const radius = size * (.72 + hashNoise(pointIndex, mark.seed) * .28);
     const pointX = Math.cos(pointAngle) * radius;
     const pointY = Math.sin(pointAngle) * radius;
     if (pointIndex === 0) ctx.moveTo(pointX, pointY);
@@ -2255,21 +2321,23 @@ function drawBulletMark(x, y, scale, mark, ground = false) {
   ctx.closePath();
   ctx.fill();
 
-  ctx.fillStyle = "rgba(1, 2, 3, .92)";
-  ctx.globalAlpha = fade;
+  ctx.fillStyle = mark.soot || "rgba(1, 2, 3, .84)";
+  ctx.globalAlpha = fade * .86;
   ctx.beginPath();
-  ctx.arc(0, 0, size * .58, 0, Math.PI * 2);
+  ctx.arc(0, 0, size * .52, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = "rgba(255,255,255,.2)";
+  ctx.fillStyle = "rgba(255,255,255,.1)";
+  ctx.globalAlpha = fade * .7;
   ctx.beginPath();
-  ctx.arc(-size * .17, -size * .18, Math.max(1, size * .12), 0, Math.PI * 2);
+  ctx.arc(-size * .16, -size * .17, Math.max(.8, size * .1), 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.strokeStyle = "rgba(8, 9, 9, .8)";
-  ctx.lineWidth = Math.max(1, size * .1);
+  ctx.strokeStyle = mark.soot || "rgba(8, 9, 9, .72)";
+  ctx.globalAlpha = fade * .56;
+  ctx.lineWidth = Math.max(.8, size * .075);
   for (let crackIndex = 0; crackIndex < 6; crackIndex += 1) {
     const crackAngle = hashNoise(crackIndex, mark.seed + 7) * Math.PI * 2;
-    const crackLength = size * (1.25 + hashNoise(crackIndex, mark.seed + 13) * .9);
+    const crackLength = size * (.95 + hashNoise(crackIndex, mark.seed + 13) * .65);
     ctx.beginPath();
     ctx.moveTo(Math.cos(crackAngle) * size * .48, Math.sin(crackAngle) * size * .48);
     ctx.lineTo(Math.cos(crackAngle) * crackLength, Math.sin(crackAngle) * crackLength);
@@ -2599,6 +2667,10 @@ function drawParticles(width, height, horizon) {
   for (const particle of state.particles) {
     const point = screenPoint(particle, width, horizon, particle.height ?? 18);
     if (!point) continue;
+    if (particle.surfaceEffect) {
+      if (particle.area !== impactAreaKey()) continue;
+      if (surfaceEffectOccludedByEnemy(point.x, point.y, point.depth, width, horizon)) continue;
+    }
     const alpha = clamp(particle.life / particle.maxLife, 0, 1);
     if (particle.kind === "ring") {
       ctx.globalAlpha = alpha;
