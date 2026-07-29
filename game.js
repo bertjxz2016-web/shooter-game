@@ -133,14 +133,38 @@ const buildingThemes = {
 };
 
 const buildingNames = {
-  "Warehouse": ["Operations room", "Loading office", "Tool room", "Storage annex"],
-  "Forest": ["Ranger cabin", "Hunting lodge", "Supply hut", "Fire lookout"],
-  "Small city block": ["Corner store", "Apartment lobby", "Repair shop", "Cafe"],
-  "Space station": ["Habitat module", "Research pod", "Cargo airlock", "Command room"],
-  "Desert military base": ["Field bunker", "Radio post", "Supply depot", "Barracks"],
-  "Abandoned village": ["Stone house", "Old chapel", "Blacksmith shop", "Farmhouse"],
-  "Mall": ["Security office", "Arcade", "Back-room store", "Food court shop"],
-  "High-rise office": ["Lobby suite", "Conference room", "Executive office", "Server room"]
+  "Warehouse": [
+    "Operations room", "Loading office", "Tool room", "Storage annex",
+    "Dispatch office", "Generator room", "Shipping bay", "Maintenance shop"
+  ],
+  "Forest": [
+    "Ranger cabin", "Hunting lodge", "Supply hut", "Fire lookout",
+    "Trail shelter", "Field station", "Wood store", "Creek cabin"
+  ],
+  "Small city block": [
+    "Corner store", "Apartment lobby", "Repair shop", "Cafe",
+    "Pharmacy", "Parking office", "Market", "Workshop"
+  ],
+  "Space station": [
+    "Habitat module", "Research pod", "Cargo airlock", "Command room",
+    "Med bay", "Reactor control", "Observatory", "Flight deck"
+  ],
+  "Desert military base": [
+    "Field bunker", "Radio post", "Supply depot", "Barracks",
+    "Vehicle bay", "Watch post", "Mess hall", "Armory"
+  ],
+  "Abandoned village": [
+    "Stone house", "Old chapel", "Blacksmith shop", "Farmhouse",
+    "Tavern", "Schoolhouse", "Stable", "Mill"
+  ],
+  "Mall": [
+    "Security office", "Arcade", "Back-room store", "Food court shop",
+    "Cinema office", "Sports shop", "Bookstore", "Service room"
+  ],
+  "High-rise office": [
+    "Lobby suite", "Conference room", "Executive office", "Server room",
+    "Break room", "Archive", "Studio", "Finance office"
+  ]
 };
 
 const interiorFurnitureTypes = {
@@ -409,25 +433,28 @@ function isRivalDuel() {
 }
 
 function arenaSize() {
-  if (isRivalDuel()) return 980;
-  if (state.mode.includes("1v1")) return 950;
-  if (state.mode.includes("8") || state.mode.includes("6v6") || state.mode.includes("Bedwars")) return 1700;
-  if (state.mode.includes("4v4")) return 1450;
-  return 1300;
+  if (isRivalDuel()) return 1500;
+  if (state.mode.includes("1v1")) return 1450;
+  if (state.mode.includes("8") || state.mode.includes("6v6") || state.mode.includes("Bedwars")) return 2600;
+  if (state.mode.includes("4v4")) return 2200;
+  return 1900;
 }
 
 function mapBuildings() {
   const style = buildingThemes[state.map.name] || buildingThemes.Forest;
   const names = buildingNames[state.map.name] || buildingNames.Forest;
   const size = arenaSize();
-  const xSpread = Math.min(320, size * .22);
-  const ySpread = Math.min(390, size * .28);
   const positions = [
-    [-xSpread, ySpread],
-    [xSpread, ySpread],
-    [-xSpread, -ySpread],
-    [xSpread, -ySpread]
+    [-size * .29, size * .28],
+    [size * .29, size * .28],
+    [-size * .29, -size * .28],
+    [size * .29, -size * .28],
+    [-size * .42, 0],
+    [size * .42, 0],
+    [0, size * .42],
+    [0, -size * .42]
   ];
+  const buildingScales = [1.08, .96, 1.03, .93, .91, .91, .95, .95];
   return positions.map(([x, y], index) => ({
     ...style,
     id: `${state.map.name}-${index}`,
@@ -436,9 +463,9 @@ function mapBuildings() {
     name: names[index],
     x,
     y,
-    width: 220,
-    height: 155,
-    interactionRadius: 128,
+    width: Math.round(220 * buildingScales[index]),
+    height: Math.round(155 * (.94 + buildingScales[index] * .06)),
+    interactionRadius: Math.round(128 * buildingScales[index]),
     autoEnterRadius: 54
   }));
 }
@@ -650,8 +677,17 @@ function generateProps(size) {
   state.props = [];
   if (isRivalDuel()) return;
 
-  for (let i = 0; i < 32; i++) {
-    const p = randomPoint(size);
+  const buildings = mapBuildings();
+  const propCount = clamp(Math.round(size / 48), 38, 56);
+  for (let i = 0; i < propCount; i++) {
+    let p = randomPoint(size);
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const clearOfBuildings = buildings.every(building => (
+        dist(p, building) > building.width * .65 + 70
+      ));
+      if (clearOfBuildings) break;
+      p = randomPoint(size);
+    }
     const type = i % 7 === 0 ? "ramp" : i % 3 === 0 ? "cover" : "crate";
     state.props.push({
       ...p,
@@ -983,6 +1019,16 @@ function mixHexColors(base, overlay, amount) {
     .toString(16)
     .padStart(2, "0");
   return `#${channel(0)}${channel(1)}${channel(2)}`;
+}
+
+function colorWithAlpha(color, alpha) {
+  const match = /^#([0-9a-f]{6})$/i.exec(color || "");
+  if (!match) return color;
+  const value = match[1];
+  const red = Number.parseInt(value.slice(0, 2), 16);
+  const green = Number.parseInt(value.slice(2, 4), 16);
+  const blue = Number.parseInt(value.slice(4, 6), 16);
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
 function spawnSurfaceImpact(impact, incoming = false) {
@@ -1804,9 +1850,12 @@ function drawSky(width, horizon, theme) {
 }
 
 function drawGroundSurface(width, height, horizon, theme) {
+  const horizonGround = mixHexColors(theme.skyHorizon, theme.groundFar, .68);
+  const middleGround = mixHexColors(theme.groundFar, state.map.ground, .62);
   const ground = ctx.createLinearGradient(0, horizon, 0, height);
-  ground.addColorStop(0, theme.groundFar);
-  ground.addColorStop(.5, state.map.ground);
+  ground.addColorStop(0, horizonGround);
+  ground.addColorStop(.14, theme.groundFar);
+  ground.addColorStop(.54, middleGround);
   ground.addColorStop(1, theme.groundNear);
   ctx.fillStyle = ground;
   ctx.fillRect(0, horizon, width, height - horizon);
@@ -1862,10 +1911,35 @@ function drawBuildingLine(width, horizon, pan, color, windowColor, seed, scale =
 function drawDistantScenery(width, horizon, theme) {
   const pan = backgroundPan(width, .38);
   ctx.save();
+  const bridgeColor = mixHexColors(theme.skyHorizon, theme.groundFar, .64);
+  const horizonBridge = ctx.createLinearGradient(0, horizon - 64, 0, horizon + 24);
+  horizonBridge.addColorStop(0, colorWithAlpha(bridgeColor, 0));
+  horizonBridge.addColorStop(.7, colorWithAlpha(bridgeColor, .62));
+  horizonBridge.addColorStop(1, colorWithAlpha(theme.groundFar, .88));
+  ctx.fillStyle = horizonBridge;
+  ctx.fillRect(0, horizon - 64, width, 88);
 
   if (theme.scene === "forest") {
-    drawRidge(width, horizon, pan * .3, horizon - 2, 58, "#415f4f", 4, 110);
-    drawRidge(width, horizon, pan * .55, horizon + 5, 40, "#233d2e", 8, 76);
+    drawRidge(
+      width,
+      horizon,
+      pan * .3,
+      horizon - 2,
+      58,
+      mixHexColors(theme.groundFar, "#415f4f", .62),
+      4,
+      110
+    );
+    drawRidge(
+      width,
+      horizon,
+      pan * .55,
+      horizon + 5,
+      40,
+      mixHexColors(theme.groundFar, "#233d2e", .72),
+      8,
+      76
+    );
     const spacing = 42;
     const offset = -wrapScreen(pan, spacing);
     const firstIndex = Math.floor(pan / spacing) - 2;
@@ -1875,7 +1949,9 @@ function drawDistantScenery(width, horizon, theme) {
       const treeHeight = 38 + hashNoise(index, 12) * 64;
       ctx.fillStyle = "#17271d";
       ctx.fillRect(x - 2, horizon - treeHeight * .48, 4, treeHeight * .5);
-      ctx.fillStyle = index % 2 ? "#24412d" : "#1c3526";
+      ctx.fillStyle = index % 2
+        ? mixHexColors(theme.groundFar, "#24412d", .72)
+        : mixHexColors(theme.groundFar, "#1c3526", .76);
       ctx.beginPath();
       ctx.moveTo(x, horizon - treeHeight);
       ctx.lineTo(x - treeHeight * .25, horizon - treeHeight * .18);
@@ -1884,8 +1960,24 @@ function drawDistantScenery(width, horizon, theme) {
       ctx.fill();
     }
   } else if (theme.scene === "city" || theme.scene === "office") {
-    drawBuildingLine(width, horizon, pan * .45, "#34434f", "#ffd9a1", 17, .72);
-    drawBuildingLine(width, horizon, pan * .72, "#222c34", "#9ed8e9", 26, 1);
+    drawBuildingLine(
+      width,
+      horizon,
+      pan * .45,
+      mixHexColors(theme.groundFar, "#34434f", .66),
+      "#ffd9a1",
+      17,
+      .72
+    );
+    drawBuildingLine(
+      width,
+      horizon,
+      pan * .72,
+      mixHexColors(theme.groundFar, "#222c34", .76),
+      "#9ed8e9",
+      26,
+      1
+    );
     if (theme.scene === "office") {
       ctx.strokeStyle = "rgba(14, 21, 28, .48)";
       ctx.lineWidth = 12;
@@ -1903,8 +1995,26 @@ function drawDistantScenery(width, horizon, theme) {
       ctx.stroke();
     }
   } else if (theme.scene === "desert") {
-    drawRidge(width, horizon, pan * .24, horizon + 2, 92, "#8b6547", 31, 132);
-    drawRidge(width, horizon, pan * .52, horizon + 8, 54, "#5e4936", 37, 94);
+    drawRidge(
+      width,
+      horizon,
+      pan * .24,
+      horizon + 2,
+      92,
+      mixHexColors(theme.groundFar, "#8b6547", .58),
+      31,
+      132
+    );
+    drawRidge(
+      width,
+      horizon,
+      pan * .52,
+      horizon + 8,
+      54,
+      mixHexColors(theme.groundFar, "#5e4936", .7),
+      37,
+      94
+    );
     ctx.fillStyle = "#353a36";
     for (let i = 0; i < 5; i++) {
       const x = wrapScreen(i * width * .28 - pan * .65, width + 180) - 90;
@@ -1920,7 +2030,16 @@ function drawDistantScenery(width, horizon, theme) {
       ctx.stroke();
     }
   } else if (theme.scene === "village") {
-    drawRidge(width, horizon, pan * .3, horizon + 3, 62, "#5d5143", 48, 118);
+    drawRidge(
+      width,
+      horizon,
+      pan * .3,
+      horizon + 3,
+      62,
+      mixHexColors(theme.groundFar, "#5d5143", .68),
+      48,
+      118
+    );
     const spacing = 92;
     const offset = -wrapScreen(pan * .68, spacing);
     const firstIndex = Math.floor(pan * .68 / spacing) - 2;
@@ -1929,7 +2048,9 @@ function drawDistantScenery(width, horizon, theme) {
       const x = offset + i * spacing;
       const houseHeight = 24 + hashNoise(index, 52) * 24;
       const houseWidth = 48 + hashNoise(index, 55) * 28;
-      ctx.fillStyle = index % 2 ? "#493932" : "#59443a";
+      ctx.fillStyle = index % 2
+        ? mixHexColors(theme.groundFar, "#493932", .74)
+        : mixHexColors(theme.groundFar, "#59443a", .68);
       ctx.fillRect(x - houseWidth / 2, horizon - houseHeight, houseWidth, houseHeight + 3);
       ctx.fillStyle = "#2a2422";
       ctx.beginPath();
@@ -1967,7 +2088,15 @@ function drawDistantScenery(width, horizon, theme) {
     }
     ctx.fillStyle = "rgba(255, 244, 205, .28)";
     for (let x = 28; x < width; x += 138) ctx.fillRect(x, 24, 74, 8);
-    drawBuildingLine(width, horizon, pan * .4, "#3c464b", "#f7d88f", 61, .55);
+    drawBuildingLine(
+      width,
+      horizon,
+      pan * .4,
+      mixHexColors(theme.groundFar, "#3c464b", .68),
+      "#f7d88f",
+      61,
+      .55
+    );
   } else if (theme.scene === "space") {
     ctx.strokeStyle = "rgba(114, 210, 244, .32)";
     ctx.lineWidth = 4;
@@ -2036,12 +2165,24 @@ function drawGroundDetail(width, height, horizon, theme) {
 }
 
 function drawHorizonHaze(width, height, horizon, theme) {
-  const haze = ctx.createLinearGradient(0, horizon - 34, 0, horizon + height * .25);
+  const blendedTerrain = mixHexColors(theme.skyHorizon, theme.groundFar, .72);
+  const terrainBlend = ctx.createLinearGradient(0, horizon - 48, 0, horizon + height * .28);
+  terrainBlend.addColorStop(0, colorWithAlpha(blendedTerrain, 0));
+  terrainBlend.addColorStop(.24, colorWithAlpha(blendedTerrain, .44));
+  terrainBlend.addColorStop(.56, colorWithAlpha(theme.groundFar, .24));
+  terrainBlend.addColorStop(1, colorWithAlpha(theme.groundFar, 0));
+  ctx.fillStyle = terrainBlend;
+  ctx.fillRect(0, horizon - 48, width, height * .36);
+
+  const haze = ctx.createLinearGradient(0, horizon - 72, 0, horizon + height * .34);
   haze.addColorStop(0, "rgba(255, 255, 255, 0)");
-  haze.addColorStop(.3, theme.haze);
+  haze.addColorStop(.34, theme.haze);
+  haze.addColorStop(.72, theme.haze);
   haze.addColorStop(1, "rgba(8, 12, 16, 0)");
+  ctx.globalAlpha = .72;
   ctx.fillStyle = haze;
-  ctx.fillRect(0, horizon - 34, width, height * .31);
+  ctx.fillRect(0, horizon - 72, width, height * .44);
+  ctx.globalAlpha = 1;
 }
 
 function drawBuildingInterior(width, height, horizon, building) {
