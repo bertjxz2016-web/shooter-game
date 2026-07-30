@@ -840,6 +840,15 @@ function enterBuilding() {
   if (!state.running || state.insideBuilding || state.buildingCooldown > 0 || !nearExteriorEntrance()) return false;
   const building = activeBuilding();
   const p = state.player;
+  for (const enemy of state.enemies) {
+    if (!enemy.buildingExitPending || !enemy.buildingExitPoint) continue;
+    enemy.x = enemy.buildingExitPoint.x;
+    enemy.y = enemy.buildingExitPoint.y;
+    enemy.angle = enemy.buildingExitPoint.angle;
+    enemy.buildingExitPending = false;
+    enemy.buildingExitTimer = 0;
+    enemy.buildingExitPoint = null;
+  }
   state.buildingReturn = {
     buildingId: building.id,
     player: { x: p.x, y: p.y, angle: p.angle, pitch: p.pitch },
@@ -861,18 +870,16 @@ function enterBuilding() {
   p.vz = 0;
 
   const livingEnemies = state.enemies.filter(enemy => enemy.alive);
-  const enemyEntryPoints = [
-    [-112, -24], [112, -24], [-34, 38], [34, 38],
-    [-122, 132], [122, 132], [0, 156], [-62, 18],
-    [62, 18], [0, 126], [-72, 168], [72, 168]
-  ];
   livingEnemies.forEach((enemy, index) => {
-    const spawn = enemyEntryPoints[index % enemyEntryPoints.length];
-    const resolved = resolveInteriorPosition(spawn[0], spawn[1], spawn[0], spawn[1], 20);
-    enemy.x = resolved.x;
-    enemy.y = resolved.y;
-    enemy.angle = -Math.PI / 2;
-    enemy.shootCd = Math.max(enemy.shootCd, .8);
+    const approachDistance = Math.max(0, dist(enemy, building) - building.interactionRadius);
+    enemy.buildingEntryPending = true;
+    enemy.buildingEntryTimer = clamp(approachDistance / Math.max(70, enemy.speed), 1.25, 8.5) + index * .55;
+    enemy.buildingDoorOffset = ((index % 3) - 1) * 28;
+    enemy.buildingEntered = false;
+    enemy.buildingExitPending = false;
+    enemy.buildingExitTimer = 0;
+    enemy.buildingExitPoint = null;
+    enemy.shootCd = Math.max(enemy.shootCd, 1);
     enemy.targetCd = 0;
   });
   clearBuildingTransitionEffects();
@@ -909,12 +916,41 @@ function exitBuilding(ignoreDoor = false) {
   p.z = 0;
   p.vz = 0;
 
+  let emergingEnemyIndex = 0;
   for (const enemy of state.enemies) {
     const enemyReturn = saved?.enemies.find(item => item.id === enemy.id);
     if (!enemyReturn) continue;
-    enemy.x = enemyReturn.x;
-    enemy.y = enemyReturn.y;
-    enemy.angle = enemyReturn.angle;
+    if (enemy.buildingEntered && enemy.alive) {
+      const sideOffset = ((emergingEnemyIndex % 3) - 1) * 34;
+      const lateralX = -awayY / awayLength;
+      const lateralY = awayX / awayLength;
+      enemy.buildingExitPending = true;
+      enemy.buildingExitTimer = .7 + emergingEnemyIndex * .45;
+      enemy.buildingExitPoint = {
+        x: clamp(
+          building.x + awayX / awayLength * (building.interactionRadius + 30) + lateralX * sideOffset,
+          -size / 2 + 36,
+          size / 2 - 36
+        ),
+        y: clamp(
+          building.y + awayY / awayLength * (building.interactionRadius + 30) + lateralY * sideOffset,
+          -size / 2 + 36,
+          size / 2 - 36
+        ),
+        angle: Math.atan2(awayY, awayX)
+      };
+      emergingEnemyIndex += 1;
+    } else {
+      enemy.x = enemyReturn.x;
+      enemy.y = enemyReturn.y;
+      enemy.angle = enemyReturn.angle;
+      enemy.buildingExitPending = false;
+      enemy.buildingExitTimer = 0;
+      enemy.buildingExitPoint = null;
+    }
+    enemy.buildingEntryPending = false;
+    enemy.buildingEntryTimer = 0;
+    enemy.buildingEntered = false;
     enemy.shootCd = Math.max(enemy.shootCd, .6);
     enemy.targetCd = 0;
   }
@@ -1076,7 +1112,13 @@ function spawnEnemies(size) {
       supplyCd: 0,
       supplies: { water: 1, apple: 1, sandwich: 1 },
       alive: true,
-      trapped: 0
+      trapped: 0,
+      buildingEntryPending: false,
+      buildingEntryTimer: 0,
+      buildingEntered: false,
+      buildingExitPending: false,
+      buildingExitTimer: 0,
+      buildingExitPoint: null
     });
   }
 }
@@ -1622,12 +1664,16 @@ function angleDiff(a, b) {
   return Math.atan2(Math.sin(a - b), Math.cos(a - b));
 }
 
+function enemyIsPresent(enemy) {
+  return enemy.alive && !enemy.buildingEntryPending && !enemy.buildingExitPending;
+}
+
 function findTargetInCrosshair(range) {
   let best = null;
   let bestDistance = Infinity;
   const p = state.player;
   for (const e of state.enemies) {
-    if (!e.alive) continue;
+    if (!enemyIsPresent(e)) continue;
     const dx = e.x - p.x;
     const dy = e.y - p.y;
     const d = Math.hypot(dx, dy);
@@ -1647,7 +1693,7 @@ function findTargetInCrosshair(range) {
 }
 
 function chooseEnemyTarget(enemy) {
-  const rivals = state.enemies.filter(candidate => candidate.alive && candidate !== enemy);
+  const rivals = state.enemies.filter(candidate => enemyIsPresent(candidate) && candidate !== enemy);
   const botDifficulty = difficulty();
   const targetPlayer = !rivals.length || Math.random() < botDifficulty.playerFocus;
   const target = targetPlayer
@@ -1667,11 +1713,12 @@ function chooseEnemyTarget(enemy) {
 
 function resolveEnemyTarget(enemy) {
   if (enemy.targetId === "player") return state.player;
-  return state.enemies.find(candidate => candidate.alive && candidate.id === enemy.targetId) || null;
+  return state.enemies.find(candidate => enemyIsPresent(candidate) && candidate.id === enemy.targetId) || null;
 }
 
 function enemyShoot(enemy, target, dt) {
-  if (!enemy.alive || enemy.trapped > 0 || !target) return;
+  if (!enemyIsPresent(enemy) || enemy.trapped > 0 || !target) return;
+  if (target !== state.player && !enemyIsPresent(target)) return;
   enemy.shootCd -= dt;
   const botDifficulty = difficulty();
   const targetIsPlayer = target === state.player;
@@ -1872,10 +1919,57 @@ function updateEnemySupplies(enemy, dt) {
   return true;
 }
 
+function updateEnemyBuildingTransition(enemy, dt) {
+  if (state.insideBuilding && enemy.buildingEntryPending) {
+    enemy.buildingEntryTimer -= dt;
+    if (enemy.buildingEntryTimer > 0) return true;
+
+    const doorwayX = clamp(
+      enemy.buildingDoorOffset || 0,
+      -INTERIOR_BOUNDS.doorHalfWidth + 22,
+      INTERIOR_BOUNDS.doorHalfWidth - 22
+    );
+    const doorwayY = INTERIOR_BOUNDS.minY + 30;
+    const resolved = resolveInteriorPosition(doorwayX, doorwayY, doorwayX, doorwayY, 20);
+    enemy.x = resolved.x;
+    enemy.y = resolved.y;
+    enemy.angle = Math.PI / 2;
+    enemy.buildingEntryPending = false;
+    enemy.buildingEntryTimer = 0;
+    enemy.buildingEntered = true;
+    enemy.shootCd = Math.max(enemy.shootCd, 1);
+    enemy.targetId = "player";
+    enemy.targetCd = 1.2;
+    addChat(`${enemy.id} entered through the doorway.`);
+    return false;
+  }
+
+  if (!state.insideBuilding && enemy.buildingExitPending) {
+    enemy.buildingExitTimer -= dt;
+    if (enemy.buildingExitTimer > 0) return true;
+
+    const exitPoint = enemy.buildingExitPoint;
+    if (exitPoint) {
+      enemy.x = exitPoint.x;
+      enemy.y = exitPoint.y;
+      enemy.angle = exitPoint.angle;
+    }
+    enemy.buildingExitPending = false;
+    enemy.buildingExitTimer = 0;
+    enemy.buildingExitPoint = null;
+    enemy.shootCd = Math.max(enemy.shootCd, .8);
+    enemy.targetCd = 0;
+    addChat(`${enemy.id} came out through the entrance.`);
+  }
+
+  return false;
+}
+
 function updateEnemies(dt) {
   const size = arenaSize();
   for (const e of state.enemies) {
     if (!e.alive) continue;
+    if (updateEnemyBuildingTransition(e, dt)) continue;
     if (!updateEnemySupplies(e, dt)) continue;
     if (e.trapped > 0) {
       e.trapped -= dt;
@@ -1913,7 +2007,7 @@ function updateEnemies(dt) {
       moveY += (e.y - trap.y) / gap * force;
     }
     for (const other of state.enemies) {
-      if (!other.alive || other === e) continue;
+      if (!enemyIsPresent(other) || other === e) continue;
       const gap = Math.max(1, dist(e, other));
       if (gap >= 70) continue;
       const force = (70 - gap) / 70 * 1.3;
@@ -2954,7 +3048,7 @@ function drawSprites(width, height, horizon) {
       sprites.push({ kind: "bulletMark", obj: mark, depth: project(mark).z });
     }
   }
-  for (const enemy of state.enemies) if (enemy.alive) sprites.push({ kind: "enemy", obj: enemy, depth: project(enemy).z });
+  for (const enemy of state.enemies) if (enemyIsPresent(enemy)) sprites.push({ kind: "enemy", obj: enemy, depth: project(enemy).z });
   sprites.sort((a, b) => b.depth - a.depth);
 
   for (const sprite of sprites) {
@@ -2984,7 +3078,7 @@ function drawSprites(width, height, horizon) {
 
 function surfaceEffectOccludedByEnemy(x, y, effectDepth, width, horizon) {
   for (const enemy of state.enemies) {
-    if (!enemy.alive) continue;
+    if (!enemyIsPresent(enemy)) continue;
     const enemyPoint = project(enemy);
     if (enemyPoint.z < 26 || enemyPoint.z >= effectDepth - 2) continue;
     const enemyX = width / 2 + enemyPoint.x / enemyPoint.z * 560;
