@@ -167,6 +167,36 @@ const buildingNames = {
   ]
 };
 
+const structureTypesByMap = {
+  "Warehouse": ["hangar", "office", "workshop", "shed", "garage", "tower", "warehouse", "bunker"],
+  "Forest": ["cabin", "lodge", "shed", "tower", "tent", "tent", "barn", "cabin"],
+  "Small city block": ["storefront", "apartment", "garage", "storefront", "kiosk", "warehouse", "clinic", "workshop"],
+  "Space station": ["module", "pod", "airlock", "module", "dome", "bunker", "tower", "hangar"],
+  "Desert military base": ["bunker", "tower", "depot", "barracks", "hangar", "tower", "tent", "bunker"],
+  "Abandoned village": ["house", "chapel", "workshop", "barn", "tavern", "school", "stable", "mill"],
+  "Mall": ["storefront", "arcade", "storefront", "kiosk", "cinema", "storefront", "kiosk", "service"],
+  "High-rise office": ["lobby", "office", "tower", "service", "studio", "archive", "garage", "annex"]
+};
+
+const structureDimensions = {
+  tent: [190, 112],
+  tower: [145, 235],
+  bunker: [270, 115],
+  hangar: [310, 155],
+  garage: [260, 140],
+  warehouse: [285, 165],
+  dome: [240, 145],
+  pod: [190, 150],
+  kiosk: [165, 110],
+  chapel: [200, 205],
+  barn: [255, 170],
+  stable: [270, 140],
+  mill: [220, 190],
+  cabin: [210, 155],
+  lodge: [250, 175],
+  shed: [185, 130]
+};
+
 const interiorFurnitureTypes = {
   warehouse: ["shelf", "crate", "locker", "crate", "desk", "chair", "shelf", "console", "bench", "crate", "locker", "barrel"],
   forest: ["table", "chair", "bed", "shelf", "crate", "chair", "cabinet", "bench", "plant", "table", "crate", "barrel"],
@@ -443,6 +473,7 @@ function arenaSize() {
 function mapBuildings() {
   const style = buildingThemes[state.map.name] || buildingThemes.Forest;
   const names = buildingNames[state.map.name] || buildingNames.Forest;
+  const structureTypes = structureTypesByMap[state.map.name] || structureTypesByMap.Forest;
   const size = arenaSize();
   const positions = [
     [-size * .29, size * .28],
@@ -468,17 +499,22 @@ function mapBuildings() {
   ];
   return positions.map(([x, y], index) => {
     const baseName = names[index % names.length];
+    const structureType = structureTypes[index % structureTypes.length];
+    const dimensions = structureDimensions[structureType] || [220, 155];
+    const width = Math.round(dimensions[0] * buildingScales[index]);
+    const height = Math.round(dimensions[1] * buildingScales[index]);
     return {
       ...style,
       id: `${state.map.name}-${index}`,
       index,
       scene: (backgroundThemes[state.map.name] || backgroundThemes.Forest).scene,
+      structureType,
       name: index < names.length ? baseName : `${baseName} outpost`,
       x,
       y,
-      width: Math.round(220 * buildingScales[index]),
-      height: Math.round(155 * (.94 + buildingScales[index] * .06)),
-      interactionRadius: Math.round(128 * buildingScales[index]),
+      width,
+      height,
+      interactionRadius: Math.max(108, Math.round(width * .54)),
       autoEnterRadius: 54
     };
   });
@@ -714,11 +750,66 @@ function generateProps(size) {
   }
 }
 
+function createTrap(point, type, depth = 0, seed = Math.random() * 1000) {
+  const radii = { mine: 32, snare: 31, hole: 38, pitfall: 46 };
+  return {
+    ...point,
+    type,
+    radius: radii[type] || 34,
+    depth,
+    seed,
+    active: true
+  };
+}
+
 function generateTraps(size) {
   state.traps = [];
-  for (let i = 0; i < 5; i++) state.traps.push({ ...randomPoint(size), type: "mine", radius: 32, active: true });
-  for (let i = 0; i < 8; i++) state.traps.push({ ...randomPoint(size), type: "hole", radius: 38, depth: Math.floor(rand(1, 16)), active: true });
-  for (let i = 0; i < 3; i++) state.traps.push({ ...randomPoint(size), type: "pitfall", radius: 46, depth: Math.floor(rand(6, 16)), active: true });
+  if (isRivalDuel()) {
+    const mirroredLayout = [
+      [-.08, .15, "mine"],
+      [.11, .2, "snare"],
+      [-.16, .06, "hole"],
+      [.02, .27, "pitfall"],
+      [.18, .13, "mine"],
+      [-.13, .24, "snare"]
+    ];
+    for (const [xRatio, yRatio, type] of mirroredLayout) {
+      const depth = type === "hole"
+        ? Math.floor(rand(5, 12))
+        : type === "pitfall"
+          ? Math.floor(rand(7, 14))
+          : 0;
+      const seed = Math.random() * 1000;
+      const point = { x: size * xRatio, y: size * yRatio };
+      state.traps.push(createTrap(point, type, depth, seed));
+      state.traps.push(createTrap({ x: -point.x, y: -point.y }, type, depth, seed));
+    }
+    return;
+  }
+
+  const buildings = mapBuildings();
+  const density = clamp(Math.round(size / 950), 4, 8);
+  const trapPoint = () => {
+    let point = randomPoint(size);
+    for (let attempt = 0; attempt < 18; attempt++) {
+      const clearOfBuildings = buildings.every(building => (
+        dist(point, building) > building.width * .62 + 80
+      ));
+      if (clearOfBuildings) return point;
+      point = randomPoint(size);
+    }
+    return point;
+  };
+  const addTraps = (type, count, depthRange = null) => {
+    for (let index = 0; index < count; index++) {
+      const depth = depthRange ? Math.floor(rand(depthRange[0], depthRange[1])) : 0;
+      state.traps.push(createTrap(trapPoint(), type, depth));
+    }
+  };
+  addTraps("mine", density * 3);
+  addTraps("snare", density * 3);
+  addTraps("hole", density * 4, [2, 16]);
+  addTraps("pitfall", density * 2, [6, 16]);
 }
 
 function spawnEnemies(size) {
@@ -781,7 +872,7 @@ function resetCombatants(regenerateArena = true) {
   state.damageArc = { life: 0, angle: 0 };
   if (regenerateArena) generateProps(size);
   if (isRivalDuel()) {
-    state.traps = [];
+    generateTraps(size);
   } else if (regenerateArena) {
     generateTraps(size);
   }
@@ -926,7 +1017,9 @@ function rayCircleDistance(origin, directionX, directionY, object, radius, maxDi
 function impactMaterialFor(object = null) {
   const type = object?.type || "";
   const name = object?.name || "";
+  const structureType = object?.structureType || "";
   const scene = object?.scene || (backgroundThemes[state.map.name] || backgroundThemes.Forest).scene;
+  if (structureType === "tent") return "fabric";
   if (["barrel", "locker", "console", "radio", "pod", "car", "forklift", "antenna"].includes(type)
     || ["car", "forklift", "antenna"].includes(name)) return "metal";
   if (["crate", "shelf", "desk", "chair", "table", "bed", "bench", "cabinet", "counter"].includes(type)
@@ -1050,7 +1143,8 @@ function spawnSurfaceImpact(impact, incoming = false) {
     metal: { particle: "#ffc85d", smoke: "#8b959d", rim: "#aeb8bf" },
     wood: { particle: "#d4a065", smoke: "#8d735e", rim: "#b88958" },
     concrete: { particle: "#c4c2b8", smoke: "#92918b", rim: "#aaa89f" },
-    earth: { particle: "#ba8756", smoke: "#8a684c", rim: "#9d714c" }
+    earth: { particle: "#ba8756", smoke: "#8a684c", rim: "#9d714c" },
+    fabric: { particle: "#d7c59b", smoke: "#8f897a", rim: "#b8aa87" }
   };
   const palette = palettes[impact.material] || palettes.concrete;
   const surfaceColor = impact.surfaceColor || state.map.wall;
@@ -1565,6 +1659,19 @@ function updateEnemies(dt) {
   }
 }
 
+function applyTrapDamage(entity, isPlayer, amount, source) {
+  if (isPlayer) {
+    takeDamage(amount, source);
+    return;
+  }
+  entity.health -= amount;
+  if (entity.health > 0 || !entity.alive) return;
+  entity.alive = false;
+  state.lastNoKillCheck = state.time;
+  addChat(`${entity.id} was eliminated by ${source}.`);
+  handleAllEnemiesDefeated(`${entity.id} triggered ${source}`);
+}
+
 function checkEntityTraps(entity, isPlayer) {
   for (const trap of state.traps) {
     if (!trap.active) continue;
@@ -1573,28 +1680,25 @@ function checkEntityTraps(entity, isPlayer) {
     if (trap.type === "mine") {
       trap.active = false;
       addChat(`${name} stepped on a buried mine.`);
-      if (isPlayer) takeDamage(30, "buried mine");
-      else {
-        entity.health -= 30;
-        if (entity.health <= 0) {
-          entity.alive = false;
-          addChat(`${entity.id} was eliminated by a mine.`);
-        }
-      }
+      applyTrapDamage(entity, isPlayer, 30, "a buried mine");
+    }
+    if (trap.type === "snare") {
+      trap.active = false;
+      entity.trapped = Math.max(entity.trapped, 2.4);
+      addChat(`${name} triggered a steel snare.`);
+      applyTrapDamage(entity, isPlayer, 12, "a steel snare");
     }
     if (trap.type === "hole") {
       trap.active = false;
       entity.trapped = 1.4 + trap.depth * .08;
       addChat(`${name} fell into a ${trap.depth}-block hole and mined out.`);
-      if (isPlayer) takeDamage(Math.floor(trap.depth / 3) + 1, "hole fall");
-      else entity.health -= Math.floor(trap.depth / 3) + 1;
+      applyTrapDamage(entity, isPlayer, Math.floor(trap.depth / 3) + 1, "a hole fall");
     }
     if (trap.type === "pitfall") {
       trap.active = false;
       entity.trapped = 1.8;
       addChat(`${name} triggered a pitfall with spikes.`);
-      if (isPlayer) takeDamage(40 + Math.floor(trap.depth / 3), "spikes");
-      else entity.health -= 40 + Math.floor(trap.depth / 3);
+      applyTrapDamage(entity, isPlayer, 40 + Math.floor(trap.depth / 3), "a spike pit");
     }
   }
 }
@@ -1606,13 +1710,23 @@ function updateTrapsByTime() {
     state.lastTrapMinute = minute;
     const size = arenaSize();
     addChat(`${minute} minutes: the arena added more traps.`);
-    for (let i = 0; i < 3; i++) state.traps.push({ ...randomPoint(size), type: "mine", radius: 32, active: true });
-    for (let i = 0; i < 4; i++) state.traps.push({ ...randomPoint(size), type: "hole", radius: 38, depth: Math.floor(rand(1, 16)), active: true });
-    for (let i = 0; i < 2; i++) state.traps.push({ ...randomPoint(size), type: "pitfall", radius: 46, depth: Math.floor(rand(6, 16)), active: true });
+    for (let i = 0; i < 3; i++) state.traps.push(createTrap(randomPoint(size), "mine"));
+    for (let i = 0; i < 3; i++) state.traps.push(createTrap(randomPoint(size), "snare"));
+    for (let i = 0; i < 4; i++) {
+      state.traps.push(createTrap(randomPoint(size), "hole", Math.floor(rand(1, 16))));
+    }
+    for (let i = 0; i < 2; i++) {
+      state.traps.push(createTrap(randomPoint(size), "pitfall", Math.floor(rand(6, 16))));
+    }
     if (minute >= 17) {
-      for (let i = 0; i < 5; i++) state.traps.push({ ...randomPoint(size), type: "mine", radius: 32, active: true });
-      for (let i = 0; i < 7; i++) state.traps.push({ ...randomPoint(size), type: "hole", radius: 38, depth: Math.floor(rand(1, 16)), active: true });
-      for (let i = 0; i < 3; i++) state.traps.push({ ...randomPoint(size), type: "pitfall", radius: 46, depth: Math.floor(rand(6, 16)), active: true });
+      for (let i = 0; i < 5; i++) state.traps.push(createTrap(randomPoint(size), "mine"));
+      for (let i = 0; i < 5; i++) state.traps.push(createTrap(randomPoint(size), "snare"));
+      for (let i = 0; i < 7; i++) {
+        state.traps.push(createTrap(randomPoint(size), "hole", Math.floor(rand(1, 16))));
+      }
+      for (let i = 0; i < 3; i++) {
+        state.traps.push(createTrap(randomPoint(size), "pitfall", Math.floor(rand(6, 16))));
+      }
     }
   }
   if (state.time - state.lastNoKillCheck > 240) {
@@ -2501,12 +2615,174 @@ function drawBulletMark(x, y, scale, mark, ground = false) {
   ctx.restore();
 }
 
+function drawExteriorDoor(x, baseY, doorW, doorH, building, nearEntrance) {
+  const doorX = x - doorW / 2;
+  const doorY = baseY - doorH;
+  ctx.fillStyle = "rgba(8, 12, 14, .96)";
+  ctx.fillRect(doorX, doorY, doorW, doorH);
+  ctx.strokeStyle = building.accent;
+  ctx.globalAlpha = nearEntrance ? .98 : .54;
+  ctx.lineWidth = Math.max(2, doorW * .035);
+  ctx.strokeRect(doorX, doorY, doorW, doorH);
+  ctx.fillStyle = building.accent;
+  ctx.fillRect(
+    doorX + doorW * .72,
+    doorY + doorH * .5,
+    Math.max(3, doorW * .06),
+    Math.max(3, doorW * .06)
+  );
+  ctx.globalAlpha = 1;
+}
+
+function drawExteriorWindow(centerX, top, width, height, scale) {
+  const glass = ctx.createLinearGradient(0, top, 0, top + height);
+  glass.addColorStop(0, "rgba(144, 204, 219, .68)");
+  glass.addColorStop(1, "rgba(24, 42, 50, .9)");
+  ctx.fillStyle = glass;
+  ctx.fillRect(centerX - width / 2, top, width, height);
+  ctx.strokeStyle = "rgba(224, 238, 239, .38)";
+  ctx.lineWidth = Math.max(1, scale * .7);
+  ctx.strokeRect(centerX - width / 2, top, width, height);
+  ctx.beginPath();
+  ctx.moveTo(centerX, top);
+  ctx.lineTo(centerX, top + height);
+  ctx.stroke();
+}
+
+function drawTentExterior(x, y, w, h, building, nearEntrance) {
+  ctx.fillStyle = building.roof;
+  ctx.beginPath();
+  ctx.moveTo(x - w * .55, y);
+  ctx.lineTo(x, y - h);
+  ctx.lineTo(x + w * .55, y);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = colorWithAlpha(building.exterior, .88);
+  ctx.beginPath();
+  ctx.moveTo(x, y - h);
+  ctx.lineTo(x + w * .55, y);
+  ctx.lineTo(x + w * .08, y);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = colorWithAlpha(building.trim, .82);
+  ctx.lineWidth = Math.max(2, w * .012);
+  ctx.beginPath();
+  ctx.moveTo(x, y - h);
+  ctx.lineTo(x - w * .7, y + 5);
+  ctx.moveTo(x, y - h);
+  ctx.lineTo(x + w * .7, y + 5);
+  ctx.stroke();
+  ctx.fillStyle = building.trim;
+  ctx.fillRect(x - w * .72, y + 2, w * .06, Math.max(3, h * .035));
+  ctx.fillRect(x + w * .66, y + 2, w * .06, Math.max(3, h * .035));
+
+  ctx.fillStyle = "rgba(8, 11, 10, .9)";
+  ctx.beginPath();
+  ctx.moveTo(x, y - h * .6);
+  ctx.lineTo(x - w * .13, y);
+  ctx.lineTo(x + w * .13, y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = building.accent;
+  ctx.globalAlpha = nearEntrance ? .98 : .58;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+function drawTowerExterior(x, y, w, h, building, nearEntrance, scale) {
+  const platformY = y - h * .48;
+  ctx.strokeStyle = building.roof;
+  ctx.lineWidth = Math.max(5, w * .07);
+  ctx.beginPath();
+  ctx.moveTo(x - w * .3, y);
+  ctx.lineTo(x - w * .2, platformY);
+  ctx.moveTo(x + w * .3, y);
+  ctx.lineTo(x + w * .2, platformY);
+  ctx.moveTo(x - w * .27, y - h * .12);
+  ctx.lineTo(x + w * .23, y - h * .34);
+  ctx.moveTo(x + w * .27, y - h * .12);
+  ctx.lineTo(x - w * .23, y - h * .34);
+  ctx.stroke();
+
+  ctx.fillStyle = building.roof;
+  ctx.fillRect(x - w * .48, platformY, w * .96, Math.max(5, h * .055));
+  ctx.fillStyle = building.exterior;
+  ctx.fillRect(x - w * .37, y - h * .86, w * .74, h * .38);
+  ctx.fillStyle = building.roof;
+  ctx.fillRect(x - w * .44, y - h * .94, w * .88, h * .09);
+  drawExteriorWindow(x - w * .2, y - h * .78, w * .18, h * .12, scale);
+  drawExteriorWindow(x + w * .2, y - h * .78, w * .18, h * .12, scale);
+  drawExteriorDoor(x, platformY, w * .22, h * .26, building, nearEntrance);
+
+  ctx.strokeStyle = building.accent;
+  ctx.globalAlpha = .64;
+  ctx.lineWidth = Math.max(2, w * .025);
+  ctx.beginPath();
+  ctx.moveTo(x - w * .08, platformY);
+  ctx.lineTo(x - w * .08, y);
+  ctx.moveTo(x + w * .08, platformY);
+  ctx.lineTo(x + w * .08, y);
+  for (let rung = 1; rung < 7; rung++) {
+    const rungY = platformY + (y - platformY) * rung / 7;
+    ctx.moveTo(x - w * .08, rungY);
+    ctx.lineTo(x + w * .08, rungY);
+  }
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+function drawBunkerExterior(x, y, w, h, building, nearEntrance) {
+  ctx.fillStyle = building.exterior;
+  ctx.beginPath();
+  ctx.moveTo(x - w * .52, y);
+  ctx.lineTo(x - w * .46, y - h * .62);
+  ctx.lineTo(x - w * .31, y - h * .88);
+  ctx.lineTo(x + w * .31, y - h * .88);
+  ctx.lineTo(x + w * .46, y - h * .62);
+  ctx.lineTo(x + w * .52, y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = building.roof;
+  ctx.fillRect(x - w * .34, y - h * .92, w * .68, h * .09);
+  ctx.fillStyle = "rgba(6, 10, 12, .86)";
+  ctx.fillRect(x - w * .42, y - h * .6, w * .23, Math.max(5, h * .09));
+  ctx.fillRect(x + w * .19, y - h * .6, w * .23, Math.max(5, h * .09));
+  drawExteriorDoor(x, y, w * .18, h * .58, building, nearEntrance);
+}
+
+function drawDomeExterior(x, y, w, h, building, nearEntrance) {
+  ctx.fillStyle = building.exterior;
+  ctx.beginPath();
+  ctx.moveTo(x - w * .52, y);
+  ctx.quadraticCurveTo(x - w * .46, y - h, x, y - h * 1.04);
+  ctx.quadraticCurveTo(x + w * .46, y - h, x + w * .52, y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = colorWithAlpha(building.trim, .58);
+  ctx.lineWidth = Math.max(1.5, w * .01);
+  for (let band = 1; band <= 3; band++) {
+    const bandY = y - h * band * .2;
+    ctx.beginPath();
+    ctx.moveTo(x - w * (.5 - band * .05), bandY);
+    ctx.quadraticCurveTo(x, bandY - h * .16, x + w * (.5 - band * .05), bandY);
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.moveTo(x, y - h * 1.03);
+  ctx.lineTo(x, y);
+  ctx.stroke();
+  drawExteriorDoor(x, y, w * .18, h * .46, building, nearEntrance);
+}
+
 function drawBuildingExterior(x, y, scale, building, screenWidth, screenHeight) {
   const w = clamp(building.width * scale, 100, screenWidth * .86);
   const h = clamp(building.height * scale, 82, screenHeight * .76);
   const nearest = activeBuilding();
   const nearEntrance = nearest.id === building.id
     && dist(state.player, building) <= building.interactionRadius;
+  const type = building.structureType || "office";
   ctx.save();
   ctx.fillStyle = "rgba(4, 7, 9, .42)";
   ctx.beginPath();
@@ -2517,6 +2793,28 @@ function drawBuildingExterior(x, y, scale, building, screenWidth, screenHeight) 
     ctx.shadowColor = building.accent;
     ctx.shadowBlur = 22;
   }
+
+  if (type === "tent") {
+    drawTentExterior(x, y, w, h, building, nearEntrance);
+    ctx.restore();
+    return;
+  }
+  if (type === "tower") {
+    drawTowerExterior(x, y, w, h, building, nearEntrance, scale);
+    ctx.restore();
+    return;
+  }
+  if (type === "bunker") {
+    drawBunkerExterior(x, y, w, h, building, nearEntrance);
+    ctx.restore();
+    return;
+  }
+  if (type === "dome" || type === "pod") {
+    drawDomeExterior(x, y, w, h, building, nearEntrance);
+    ctx.restore();
+    return;
+  }
+
   const facade = ctx.createLinearGradient(x - w / 2, 0, x + w / 2, 0);
   facade.addColorStop(0, "rgba(25, 31, 34, .98)");
   facade.addColorStop(.18, building.exterior);
@@ -2526,7 +2824,10 @@ function drawBuildingExterior(x, y, scale, building, screenWidth, screenHeight) 
   ctx.fillRect(x - w / 2, y - h, w, h);
   ctx.shadowBlur = 0;
 
-  const pitchedRoof = ["Forest", "Abandoned village"].includes(state.map.name);
+  const pitchedRoof = [
+    "cabin", "lodge", "shed", "barn", "house", "chapel",
+    "workshop", "tavern", "school", "stable", "mill", "barracks", "depot"
+  ].includes(type);
   if (pitchedRoof) {
     ctx.fillStyle = building.roof;
     ctx.beginPath();
@@ -2544,41 +2845,59 @@ function drawBuildingExterior(x, y, scale, building, screenWidth, screenHeight) 
     ctx.globalAlpha = 1;
   }
 
-  const windowY = y - h * .68;
-  const windowW = w * .18;
-  const windowH = h * .2;
-  for (const side of [-1, 1]) {
-    const windowX = x + side * w * .27 - windowW / 2;
-    const glass = ctx.createLinearGradient(0, windowY, 0, windowY + windowH);
-    glass.addColorStop(0, "rgba(144, 204, 219, .66)");
-    glass.addColorStop(1, "rgba(24, 42, 50, .88)");
-    ctx.fillStyle = glass;
-    ctx.fillRect(windowX, windowY, windowW, windowH);
-    ctx.strokeStyle = "rgba(224, 238, 239, .38)";
-    ctx.lineWidth = Math.max(1, scale * .7);
-    ctx.strokeRect(windowX, windowY, windowW, windowH);
-    ctx.beginPath();
-    ctx.moveTo(windowX + windowW / 2, windowY);
-    ctx.lineTo(windowX + windowW / 2, windowY + windowH);
-    ctx.stroke();
+  const wideEntrance = ["hangar", "garage", "warehouse", "stable"].includes(type);
+  if (!wideEntrance) {
+    drawExteriorWindow(x - w * .27, y - h * .68, w * .18, h * .2, scale);
+    drawExteriorWindow(x + w * .27, y - h * .68, w * .18, h * .2, scale);
+  } else {
+    drawExteriorWindow(x - w * .38, y - h * .72, w * .1, h * .16, scale);
+    drawExteriorWindow(x + w * .38, y - h * .72, w * .1, h * .16, scale);
   }
 
-  const doorW = w * .2;
-  const doorH = h * .52;
-  const doorX = x - doorW / 2;
-  const doorY = y - doorH;
-  ctx.fillStyle = "rgba(8, 12, 14, .96)";
-  ctx.fillRect(doorX, doorY, doorW, doorH);
-  ctx.strokeStyle = building.accent;
-  ctx.globalAlpha = nearEntrance ? .95 : .5;
-  ctx.lineWidth = Math.max(2, scale);
-  ctx.strokeRect(doorX, doorY, doorW, doorH);
-  ctx.fillStyle = building.accent;
-  ctx.fillRect(doorX + doorW * .72, doorY + doorH * .5, Math.max(3, doorW * .06), Math.max(3, doorW * .06));
-  ctx.globalAlpha = 1;
+  drawExteriorDoor(
+    x,
+    y,
+    w * (wideEntrance ? .48 : .2),
+    h * (wideEntrance ? .58 : .52),
+    building,
+    nearEntrance
+  );
+  if (wideEntrance) {
+    ctx.strokeStyle = colorWithAlpha(building.trim, .4);
+    ctx.lineWidth = Math.max(1, scale);
+    for (let panel = -1; panel <= 1; panel++) {
+      ctx.beginPath();
+      ctx.moveTo(x + panel * w * .12, y - h * .56);
+      ctx.lineTo(x + panel * w * .12, y - h * .03);
+      ctx.stroke();
+    }
+  }
 
   ctx.fillStyle = building.trim;
   ctx.fillRect(x - w * .18, y - h * .94, w * .36, Math.max(5, h * .055));
+  if (type === "kiosk") {
+    ctx.fillStyle = building.accent;
+    ctx.globalAlpha = .56;
+    ctx.fillRect(x - w * .55, y - h * .58, w * 1.1, Math.max(6, h * .1));
+    ctx.globalAlpha = 1;
+  }
+  if (type === "mill") {
+    const hubX = x + w * .27;
+    const hubY = y - h * .8;
+    ctx.strokeStyle = building.roof;
+    ctx.lineWidth = Math.max(3, w * .025);
+    for (let blade = 0; blade < 4; blade++) {
+      const angle = blade * Math.PI / 2 + .4;
+      ctx.beginPath();
+      ctx.moveTo(hubX, hubY);
+      ctx.lineTo(hubX + Math.cos(angle) * w * .32, hubY + Math.sin(angle) * w * .32);
+      ctx.stroke();
+    }
+    ctx.fillStyle = building.trim;
+    ctx.beginPath();
+    ctx.arc(hubX, hubY, Math.max(4, w * .045), 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.strokeStyle = "rgba(255,255,255,.16)";
   ctx.lineWidth = 1.5;
   ctx.strokeRect(x - w / 2, y - h, w, h);
@@ -2972,27 +3291,106 @@ function drawProp(x, y, scale, prop) {
 
 function drawTrap(x, y, scale, trap) {
   const r = clamp(trap.radius * scale, 8, 48);
+  ctx.save();
   if (trap.type === "mine") {
-    ctx.fillStyle = "#2b3038";
+    ctx.fillStyle = "rgba(0, 0, 0, .32)";
     ctx.beginPath();
-    ctx.arc(x, y - r * .2, r * .7, 0, Math.PI * 2);
+    ctx.ellipse(x, y + r * .1, r * .88, r * .34, 0, 0, Math.PI * 2);
     ctx.fill();
+    const mine = ctx.createRadialGradient(x - r * .2, y - r * .28, 1, x, y, r * .72);
+    mine.addColorStop(0, "#69737b");
+    mine.addColorStop(.48, "#30383e");
+    mine.addColorStop(1, "#11171b");
+    ctx.fillStyle = mine;
+    ctx.beginPath();
+    ctx.ellipse(x, y - r * .08, r * .72, r * .52, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(218, 226, 226, .38)";
+    ctx.lineWidth = Math.max(1, r * .07);
+    ctx.stroke();
+    ctx.fillStyle = "#9da6a9";
+    for (let bolt = 0; bolt < 4; bolt++) {
+      const angle = bolt / 4 * Math.PI * 2;
+      ctx.beginPath();
+      ctx.arc(
+        x + Math.cos(angle) * r * .42,
+        y - r * .08 + Math.sin(angle) * r * .27,
+        Math.max(1.2, r * .055),
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+    }
     ctx.fillStyle = "#ff5d63";
-    ctx.fillRect(x - 3, y - r, 6, 5);
+    ctx.beginPath();
+    ctx.arc(x, y - r * .42, Math.max(2, r * .11), 0, Math.PI * 2);
+    ctx.fill();
+  } else if (trap.type === "snare") {
+    ctx.fillStyle = "rgba(0, 0, 0, .34)";
+    ctx.beginPath();
+    ctx.ellipse(x, y + r * .12, r, r * .34, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#9da3a3";
+    ctx.lineWidth = Math.max(2, r * .12);
+    ctx.beginPath();
+    ctx.arc(x - r * .34, y, r * .48, -.95, .95);
+    ctx.arc(x + r * .34, y, r * .48, Math.PI - .95, Math.PI + .95);
+    ctx.stroke();
+    ctx.fillStyle = "#555e62";
+    ctx.beginPath();
+    ctx.ellipse(x, y, r * .36, r * .2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#c3c8c6";
+    for (const side of [-1, 1]) {
+      for (let tooth = -2; tooth <= 2; tooth++) {
+        const toothY = y + tooth * r * .13;
+        ctx.beginPath();
+        ctx.moveTo(x + side * r * .2, toothY);
+        ctx.lineTo(x + side * r * .46, toothY - r * .07);
+        ctx.lineTo(x + side * r * .46, toothY + r * .07);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
   } else {
-    ctx.fillStyle = trap.type === "pitfall" ? "#190f12" : "#11151b";
+    ctx.fillStyle = trap.type === "pitfall" ? "#69523f" : "#625346";
+    ctx.globalAlpha = .78;
+    ctx.beginPath();
+    ctx.ellipse(x, y, r * 1.12, r * .5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    const pit = ctx.createRadialGradient(x, y - r * .05, 1, x, y, r);
+    pit.addColorStop(0, "#020304");
+    pit.addColorStop(.66, trap.type === "pitfall" ? "#10090a" : "#111315");
+    pit.addColorStop(1, "#302820");
+    ctx.fillStyle = pit;
     ctx.beginPath();
     ctx.ellipse(x, y, r, r * .42, 0, 0, Math.PI * 2);
     ctx.fill();
+    ctx.strokeStyle = "rgba(205, 181, 148, .42)";
+    ctx.lineWidth = Math.max(1, r * .06);
+    ctx.stroke();
     if (trap.type === "pitfall") {
-      ctx.strokeStyle = "#d8dce3";
+      ctx.fillStyle = "#d5d8d4";
+      for (let spike = -2; spike <= 2; spike++) {
+        const spikeX = x + spike * r * .28;
+        const spikeHeight = r * (.4 + hashNoise(spike, trap.seed) * .22);
+        ctx.beginPath();
+        ctx.moveTo(spikeX - r * .08, y + r * .12);
+        ctx.lineTo(spikeX, y - spikeHeight);
+        ctx.lineTo(spikeX + r * .08, y + r * .12);
+        ctx.closePath();
+        ctx.fill();
+      }
+    } else {
+      ctx.strokeStyle = "rgba(128, 110, 91, .5)";
+      ctx.lineWidth = Math.max(1, r * .05);
       ctx.beginPath();
-      ctx.moveTo(x - r * .45, y);
-      ctx.lineTo(x, y - r * .55);
-      ctx.lineTo(x + r * .45, y);
+      ctx.ellipse(x, y + r * .04, r * .7, r * .25, 0, 0, Math.PI * 2);
       ctx.stroke();
     }
   }
+  ctx.restore();
 }
 
 function characterScreenHeight(scale) {
@@ -3193,9 +3591,10 @@ function updateUi() {
   ui.difficultyText.textContent = `Difficulty: ${state.difficulty}`;
   ui.weaponText.textContent = `Weapon: ${weapon().name}`;
   ui.ammoText.textContent = state.player.reload > 0 ? "Reloading..." : `Ammo: ${state.ammo} / ${weapon().magazine}`;
+  const trapSummary = `Mines ${countTraps("mine")} | Snares ${countTraps("snare")} | Holes ${countTraps("hole")} | Spikes ${countTraps("pitfall")}`;
   ui.trapText.textContent = isRivalDuel()
-    ? "Fair arena | Traps disabled"
-    : `Mines ${countTraps("mine")} | Holes ${countTraps("hole")} | Pitfalls ${countTraps("pitfall")}`;
+    ? `Mirrored traps | ${trapSummary}`
+    : trapSummary;
   ui.loadoutText.textContent = `${weapon().name} + ${armor().name}`;
 
   if (isRivalDuel()) {
