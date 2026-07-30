@@ -433,11 +433,11 @@ function isRivalDuel() {
 }
 
 function arenaSize() {
-  if (isRivalDuel()) return 1500;
-  if (state.mode.includes("1v1")) return 1450;
-  if (state.mode.includes("8") || state.mode.includes("6v6") || state.mode.includes("Bedwars")) return 2600;
-  if (state.mode.includes("4v4")) return 2200;
-  return 1900;
+  if (isRivalDuel()) return 3200;
+  if (state.mode.includes("1v1")) return 3000;
+  if (state.mode.includes("8") || state.mode.includes("6v6") || state.mode.includes("Bedwars")) return 6800;
+  if (state.mode.includes("4v4")) return 5400;
+  return 4800;
 }
 
 function mapBuildings() {
@@ -452,22 +452,36 @@ function mapBuildings() {
     [-size * .42, 0],
     [size * .42, 0],
     [0, size * .42],
-    [0, -size * .42]
+    [0, -size * .42],
+    [-size * .25, size * .105],
+    [size * .25, size * .105],
+    [-size * .25, -size * .105],
+    [size * .25, -size * .105],
+    [-size * .105, size * .25],
+    [size * .105, size * .25],
+    [-size * .105, -size * .25],
+    [size * .105, -size * .25]
   ];
-  const buildingScales = [1.08, .96, 1.03, .93, .91, .91, .95, .95];
-  return positions.map(([x, y], index) => ({
-    ...style,
-    id: `${state.map.name}-${index}`,
-    index,
-    scene: (backgroundThemes[state.map.name] || backgroundThemes.Forest).scene,
-    name: names[index],
-    x,
-    y,
-    width: Math.round(220 * buildingScales[index]),
-    height: Math.round(155 * (.94 + buildingScales[index] * .06)),
-    interactionRadius: Math.round(128 * buildingScales[index]),
-    autoEnterRadius: 54
-  }));
+  const buildingScales = [
+    1.08, .96, 1.03, .93, .91, .91, .95, .95,
+    .88, .92, .86, .9, .84, .84, .87, .87
+  ];
+  return positions.map(([x, y], index) => {
+    const baseName = names[index % names.length];
+    return {
+      ...style,
+      id: `${state.map.name}-${index}`,
+      index,
+      scene: (backgroundThemes[state.map.name] || backgroundThemes.Forest).scene,
+      name: index < names.length ? baseName : `${baseName} outpost`,
+      x,
+      y,
+      width: Math.round(220 * buildingScales[index]),
+      height: Math.round(155 * (.94 + buildingScales[index] * .06)),
+      interactionRadius: Math.round(128 * buildingScales[index]),
+      autoEnterRadius: 54
+    };
+  });
 }
 
 function activeBuilding() {
@@ -678,7 +692,7 @@ function generateProps(size) {
   if (isRivalDuel()) return;
 
   const buildings = mapBuildings();
-  const propCount = clamp(Math.round(size / 48), 38, 56);
+  const propCount = clamp(Math.round(size / 45), 56, 125);
   for (let i = 0; i < propCount; i++) {
     let p = randomPoint(size);
     for (let attempt = 0; attempt < 12; attempt++) {
