@@ -670,9 +670,9 @@ function interiorProps(building = activeBuilding()) {
     || interiorFurnitureTypes[building.scene]
     || interiorFurnitureTypes.forest;
   const positions = [
-    [-166, -78], [166, -72], [-170, 18], [170, 22],
-    [-166, 112], [166, 116], [-145, 178], [-55, 178],
-    [42, 178], [138, 178], [-92, 78], [96, 82]
+    [-166, -78], [166, -72], [-154, -8], [154, -4],
+    [-148, 48], [148, 52], [-160, 132], [160, 136],
+    [-145, 184], [-52, 178], [52, 178], [145, 184]
   ];
   const sizeByType = {
     shelf: [29, 105], locker: [27, 98], cabinet: [30, 86], console: [34, 68],
@@ -712,9 +712,82 @@ function interiorProps(building = activeBuilding()) {
   });
 }
 
+function interiorWallSegments(building = activeBuilding()) {
+  const roomKind = interiorKindFor(building);
+  const dividerY = 88;
+  const doorwayHalfWidth = roomKind === "industrial" ? 64 : roomKind === "space" ? 58 : 52;
+  const outerEdge = INTERIOR_BOUNDS.maxX - 12;
+  const segmentWidth = outerEdge - doorwayHalfWidth;
+  const wallHeight = roomKind === "industrial" ? 142 : 132;
+  return [
+    {
+      id: `${building.id}-partition-left`,
+      x: -(doorwayHalfWidth + segmentWidth / 2),
+      y: dividerY,
+      width: segmentWidth,
+      depth: 18,
+      height: wallHeight,
+      side: "left",
+      solid: true,
+      roomKind
+    },
+    {
+      id: `${building.id}-partition-right`,
+      x: doorwayHalfWidth + segmentWidth / 2,
+      y: dividerY,
+      width: segmentWidth,
+      depth: 18,
+      height: wallHeight,
+      side: "right",
+      solid: true,
+      roomKind
+    },
+    {
+      id: `${building.id}-partition-header`,
+      x: 0,
+      y: dividerY,
+      width: doorwayHalfWidth * 2,
+      depth: 18,
+      height: 28,
+      baseLift: wallHeight - 28,
+      side: "header",
+      solid: false,
+      roomKind
+    }
+  ];
+}
+
+function resolveInteriorWallCollision(currentX, currentY, nextX, nextY, wall, entityRadius) {
+  const minX = wall.x - wall.width / 2 - entityRadius;
+  const maxX = wall.x + wall.width / 2 + entityRadius;
+  const minY = wall.y - wall.depth / 2 - entityRadius;
+  const maxY = wall.y + wall.depth / 2 + entityRadius;
+  if (nextX <= minX || nextX >= maxX || nextY <= minY || nextY >= maxY) {
+    return { x: nextX, y: nextY };
+  }
+
+  if (currentY <= minY) return { x: nextX, y: minY };
+  if (currentY >= maxY) return { x: nextX, y: maxY };
+  if (currentX <= minX) return { x: minX, y: nextY };
+  if (currentX >= maxX) return { x: maxX, y: nextY };
+
+  const edges = [
+    { gap: Math.abs(nextX - minX), x: minX, y: nextY },
+    { gap: Math.abs(maxX - nextX), x: maxX, y: nextY },
+    { gap: Math.abs(nextY - minY), x: nextX, y: minY },
+    { gap: Math.abs(maxY - nextY), x: nextX, y: maxY }
+  ];
+  return edges.reduce((nearest, edge) => edge.gap < nearest.gap ? edge : nearest, edges[0]);
+}
+
 function resolveInteriorPosition(currentX, currentY, nextX, nextY, entityRadius = 18) {
   let x = clamp(nextX, INTERIOR_BOUNDS.minX + 24, INTERIOR_BOUNDS.maxX - 24);
   let y = clamp(nextY, INTERIOR_BOUNDS.minY + 8, INTERIOR_BOUNDS.maxY - 24);
+  for (const wall of interiorWallSegments().filter(segment => segment.solid)) {
+    const resolved = resolveInteriorWallCollision(currentX, currentY, x, y, wall, entityRadius);
+    x = resolved.x;
+    y = resolved.y;
+  }
   for (const furniture of interiorProps()) {
     const minDistance = furniture.radius + entityRadius;
     const gapX = x - furniture.x;
@@ -728,6 +801,11 @@ function resolveInteriorPosition(currentX, currentY, nextX, nextY, entityRadius 
     }
     x = furniture.x + gapX / gap * minDistance;
     y = furniture.y + gapY / gap * minDistance;
+  }
+  for (const wall of interiorWallSegments().filter(segment => segment.solid)) {
+    const resolved = resolveInteriorWallCollision(currentX, currentY, x, y, wall, entityRadius);
+    x = resolved.x;
+    y = resolved.y;
   }
   return {
     x: clamp(x, INTERIOR_BOUNDS.minX + 24, INTERIOR_BOUNDS.maxX - 24),
@@ -784,9 +862,9 @@ function enterBuilding() {
 
   const livingEnemies = state.enemies.filter(enemy => enemy.alive);
   const enemyEntryPoints = [
-    [-112, 28], [112, 28], [-34, 82], [34, 82],
-    [-122, 148], [122, 148], [0, 156], [-62, 16],
-    [62, 16], [0, 112], [-72, 132], [72, 132]
+    [-112, -24], [112, -24], [-34, 38], [34, 38],
+    [-122, 132], [122, 132], [0, 156], [-62, 18],
+    [62, 18], [0, 126], [-72, 168], [72, 168]
   ];
   livingEnemies.forEach((enemy, index) => {
     const spawn = enemyEntryPoints[index % enemyEntryPoints.length];
@@ -1167,6 +1245,34 @@ function rayCircleDistance(origin, directionX, directionY, object, radius, maxDi
   return distance > 18 && distance <= maxDistance ? distance : null;
 }
 
+function rayRectDistance(origin, directionX, directionY, rectangle, maxDistance) {
+  const halfWidth = rectangle.width / 2;
+  const halfDepth = rectangle.depth / 2;
+  const minX = rectangle.x - halfWidth;
+  const maxX = rectangle.x + halfWidth;
+  const minY = rectangle.y - halfDepth;
+  const maxY = rectangle.y + halfDepth;
+
+  const nearX = Math.abs(directionX) < .0001
+    ? (origin.x >= minX && origin.x <= maxX ? -Infinity : Infinity)
+    : Math.min((minX - origin.x) / directionX, (maxX - origin.x) / directionX);
+  const farX = Math.abs(directionX) < .0001
+    ? (origin.x >= minX && origin.x <= maxX ? Infinity : -Infinity)
+    : Math.max((minX - origin.x) / directionX, (maxX - origin.x) / directionX);
+  const nearY = Math.abs(directionY) < .0001
+    ? (origin.y >= minY && origin.y <= maxY ? -Infinity : Infinity)
+    : Math.min((minY - origin.y) / directionY, (maxY - origin.y) / directionY);
+  const farY = Math.abs(directionY) < .0001
+    ? (origin.y >= minY && origin.y <= maxY ? Infinity : -Infinity)
+    : Math.max((minY - origin.y) / directionY, (maxY - origin.y) / directionY);
+
+  const near = Math.max(nearX, nearY);
+  const far = Math.min(farX, farY);
+  if (far < Math.max(near, 0)) return null;
+  const distance = near > 18 ? near : far > 18 ? far : null;
+  return distance !== null && distance <= maxDistance ? distance : null;
+}
+
 function impactMaterialFor(object = null) {
   const type = object?.type || "";
   const name = object?.name || "";
@@ -1232,6 +1338,24 @@ function traceSurfaceImpact(origin, angle, range, pitch = 0) {
       distance = wallDistance;
       surface = "wall";
       height = wallHeight;
+      material = impactMaterialFor(building);
+      surfaceColor = building.wall;
+    }
+
+    for (const partition of interiorWallSegments(building).filter(segment => segment.solid)) {
+      const partitionDistance = rayRectDistance(
+        origin,
+        directionX,
+        directionY,
+        partition,
+        distance
+      );
+      if (partitionDistance === null) continue;
+      const partitionHeight = eyeHeight - pitchSlope * partitionDistance;
+      if (partitionHeight < 7 || partitionHeight > partition.height) continue;
+      distance = partitionDistance;
+      surface = "wall";
+      height = partitionHeight;
       material = impactMaterialFor(building);
       surfaceColor = building.wall;
     }
@@ -2516,11 +2640,13 @@ function drawBuildingInterior(width, height, horizon, building) {
   const palette = interiorPaletteFor(building, roomKind);
   ctx.save();
 
+  ctx.fillStyle = palette.wallLow;
+  ctx.fillRect(0, 0, width, height);
   const backWall = ctx.createLinearGradient(0, backTop, 0, backBottom);
   backWall.addColorStop(0, palette.wall);
   backWall.addColorStop(1, palette.wallLow);
   ctx.fillStyle = backWall;
-  ctx.fillRect(0, 0, width, backBottom);
+  ctx.fillRect(backLeft, backTop, backRight - backLeft, backBottom - backTop);
 
   const ceiling = ctx.createLinearGradient(0, 0, 0, roomHorizon);
   ceiling.addColorStop(0, palette.ceiling);
@@ -2534,7 +2660,10 @@ function drawBuildingInterior(width, height, horizon, building) {
   ctx.closePath();
   ctx.fill();
 
-  ctx.fillStyle = "rgba(20, 25, 28, .48)";
+  const leftWall = ctx.createLinearGradient(0, 0, backLeft, 0);
+  leftWall.addColorStop(0, mixHexColors(palette.wallLow, "#05080a", .64));
+  leftWall.addColorStop(1, mixHexColors(palette.wall, palette.wallLow, .42));
+  ctx.fillStyle = leftWall;
   ctx.beginPath();
   ctx.moveTo(0, 0);
   ctx.lineTo(backLeft, backTop);
@@ -2542,6 +2671,11 @@ function drawBuildingInterior(width, height, horizon, building) {
   ctx.lineTo(0, height);
   ctx.closePath();
   ctx.fill();
+
+  const rightWall = ctx.createLinearGradient(width, 0, backRight, 0);
+  rightWall.addColorStop(0, mixHexColors(palette.wallLow, "#05080a", .64));
+  rightWall.addColorStop(1, mixHexColors(palette.wall, palette.wallLow, .42));
+  ctx.fillStyle = rightWall;
   ctx.beginPath();
   ctx.moveTo(width, 0);
   ctx.lineTo(backRight, backTop);
@@ -2549,6 +2683,22 @@ function drawBuildingInterior(width, height, horizon, building) {
   ctx.lineTo(width, height);
   ctx.closePath();
   ctx.fill();
+
+  ctx.strokeStyle = colorWithAlpha(building.trim, .38);
+  ctx.lineWidth = 1.5;
+  for (let panel = 1; panel < 4; panel++) {
+    const amount = panel / 4;
+    const leftX = backLeft * amount;
+    const rightX = width - backLeft * amount;
+    const topY = backTop * amount;
+    const bottomY = height - (height - backBottom) * amount;
+    ctx.beginPath();
+    ctx.moveTo(leftX, topY);
+    ctx.lineTo(leftX, bottomY);
+    ctx.moveTo(rightX, topY);
+    ctx.lineTo(rightX, bottomY);
+    ctx.stroke();
+  }
 
   const floor = ctx.createLinearGradient(0, roomHorizon, 0, height);
   floor.addColorStop(0, palette.floor);
@@ -2562,17 +2712,69 @@ function drawBuildingInterior(width, height, horizon, building) {
   ctx.closePath();
   ctx.fill();
 
+  ctx.strokeStyle = colorWithAlpha(building.trim, .82);
+  ctx.lineWidth = Math.max(4, width * .005);
+  ctx.beginPath();
+  ctx.moveTo(backLeft, backTop);
+  ctx.lineTo(backLeft, backBottom);
+  ctx.lineTo(0, height);
+  ctx.moveTo(backRight, backTop);
+  ctx.lineTo(backRight, backBottom);
+  ctx.lineTo(width, height);
+  ctx.moveTo(backLeft, backTop);
+  ctx.lineTo(0, 0);
+  ctx.moveTo(backRight, backTop);
+  ctx.lineTo(width, 0);
+  ctx.stroke();
+
+  ctx.strokeStyle = colorWithAlpha(building.trim, .66);
+  ctx.lineWidth = Math.max(5, height * .009);
+  ctx.beginPath();
+  ctx.moveTo(0, height - 5);
+  ctx.lineTo(backLeft, backBottom);
+  ctx.lineTo(backRight, backBottom);
+  ctx.lineTo(width, height - 5);
+  ctx.stroke();
+
+  ctx.fillStyle = colorWithAlpha(building.trim, .72);
+  ctx.fillRect(backLeft - 5, backTop, 10, backBottom - backTop);
+  ctx.fillRect(backRight - 5, backTop, 10, backBottom - backTop);
+  ctx.fillRect(backLeft, backTop - 4, backRight - backLeft, 8);
+  ctx.fillRect(backLeft, backBottom - 6, backRight - backLeft, 12);
+
+  if (roomKind === "rustic") {
+    ctx.strokeStyle = "rgba(34, 23, 15, .34)";
+    ctx.lineWidth = 1;
+    for (let board = 1; board < 8; board++) {
+      const boardY = backTop + (backBottom - backTop) * board / 8;
+      ctx.beginPath();
+      ctx.moveTo(backLeft, boardY);
+      ctx.lineTo(backRight, boardY);
+      ctx.stroke();
+    }
+  } else if (roomKind === "industrial" || roomKind === "military" || roomKind === "space") {
+    ctx.strokeStyle = palette.line;
+    ctx.lineWidth = 1;
+    for (let seam = 1; seam < 5; seam++) {
+      const seamX = backLeft + (backRight - backLeft) * seam / 5;
+      ctx.beginPath();
+      ctx.moveTo(seamX, backTop);
+      ctx.lineTo(seamX, backBottom);
+      ctx.stroke();
+    }
+  }
+
   ctx.strokeStyle = palette.line;
   ctx.lineWidth = 1;
   for (let i = -7; i <= 7; i++) {
     ctx.beginPath();
-    ctx.moveTo(vanishX, roomHorizon);
+    ctx.moveTo(vanishX, backBottom);
     ctx.lineTo(vanishX + i * width * .13, height);
     ctx.stroke();
   }
   for (let i = 1; i < 10; i++) {
     const amount = i / 9;
-    const y = roomHorizon + Math.pow(amount, 1.65) * (height - roomHorizon);
+    const y = backBottom + Math.pow(amount, 1.65) * (height - backBottom);
     ctx.beginPath();
     ctx.moveTo(0, y);
     ctx.lineTo(width, y);
@@ -2734,6 +2936,9 @@ function drawSprites(width, height, horizon) {
   if (state.insideBuilding) {
     const exitDoor = { ...activeBuilding(), x: 0, y: INTERIOR_BOUNDS.minY + 8 };
     sprites.push({ kind: "exitDoor", obj: exitDoor, depth: project(exitDoor).z });
+    for (const wall of interiorWallSegments()) {
+      sprites.push({ kind: "interiorWall", obj: wall, depth: project(wall).z });
+    }
     for (const furniture of interiorProps()) {
       sprites.push({ kind: "interiorProp", obj: furniture, depth: project(furniture).z });
     }
@@ -2757,10 +2962,12 @@ function drawSprites(width, height, horizon) {
     if (point.z < 26) continue;
     const screenX = width / 2 + point.x / point.z * 560;
     if (screenX < -120 || screenX > width + 120) continue;
-    const base = horizon + 28000 / point.z;
     const scale = 620 / point.z;
+    const baseLift = sprite.kind === "interiorWall" ? (sprite.obj.baseLift || 0) : 0;
+    const base = horizon + 28000 / point.z - baseLift * scale;
     if (sprite.kind === "building") drawBuildingExterior(screenX, base, scale, sprite.obj, width, height);
     if (sprite.kind === "exitDoor") drawInteriorExit(screenX, base, scale, sprite.obj, width, height);
+    if (sprite.kind === "interiorWall") drawInteriorWall(screenX, base, scale, sprite.obj, activeBuilding(), width, height);
     if (sprite.kind === "interiorProp") drawInteriorProp(screenX, base, scale, sprite.obj);
     if (sprite.kind === "bulletMark") {
       const markY = base - sprite.obj.height * scale;
@@ -3022,6 +3229,7 @@ function drawBuildingSign(x, y, w, h, building) {
 }
 
 function drawHighRiseExterior(x, y, w, h, building, nearEntrance, scale) {
+  drawExteriorSideDepth(x, y, w, h, building);
   const facade = ctx.createLinearGradient(x - w / 2, 0, x + w / 2, 0);
   facade.addColorStop(0, "#172b38");
   facade.addColorStop(.42, building.exterior);
@@ -3058,6 +3266,14 @@ function drawSpaceModuleExterior(x, y, w, h, building, nearEntrance, scale) {
   const right = x + w * .48;
   const top = y - h * .88;
   const shoulder = h * .18;
+  ctx.fillStyle = "rgba(7, 12, 17, .86)";
+  ctx.fillRect(x - w * .4, y - h * .12, w * .8, h * .15);
+  for (const legX of [x - w * .31, x + w * .31]) {
+    ctx.fillStyle = building.roof;
+    ctx.fillRect(legX - w * .035, y - h * .06, w * .07, h * .14);
+    ctx.fillStyle = "rgba(16, 22, 25, .96)";
+    ctx.fillRect(legX - w * .08, y + h * .055, w * .16, h * .035);
+  }
   const body = ctx.createLinearGradient(left, 0, right, 0);
   body.addColorStop(0, "#243241");
   body.addColorStop(.28, building.exterior);
@@ -3232,6 +3448,15 @@ function drawTowerExterior(x, y, w, h, building, nearEntrance, scale) {
 }
 
 function drawBunkerExterior(x, y, w, h, building, nearEntrance) {
+  ctx.fillStyle = "rgba(17, 21, 20, .72)";
+  ctx.beginPath();
+  ctx.moveTo(x + w * .31, y - h * .88);
+  ctx.lineTo(x + w * .5, y - h * .69);
+  ctx.lineTo(x + w * .57, y - h * .08);
+  ctx.lineTo(x + w * .52, y);
+  ctx.lineTo(x + w * .46, y - h * .62);
+  ctx.closePath();
+  ctx.fill();
   ctx.fillStyle = building.exterior;
   ctx.beginPath();
   ctx.moveTo(x - w * .52, y);
@@ -3276,6 +3501,10 @@ function drawBunkerExterior(x, y, w, h, building, nearEntrance) {
 }
 
 function drawDomeExterior(x, y, w, h, building, nearEntrance) {
+  ctx.fillStyle = "rgba(10, 17, 21, .92)";
+  ctx.beginPath();
+  ctx.ellipse(x, y - h * .02, w * .55, h * .12, 0, 0, Math.PI * 2);
+  ctx.fill();
   ctx.fillStyle = building.exterior;
   ctx.beginPath();
   ctx.moveTo(x - w * .52, y);
@@ -3308,6 +3537,108 @@ function drawDomeExterior(x, y, w, h, building, nearEntrance) {
   drawBuildingSign(x, y - h * .02, w * .76, h * .88, building);
 }
 
+function drawExteriorFoundation(x, y, w, h, building, type) {
+  ctx.save();
+  if (type === "tent") {
+    ctx.fillStyle = "rgba(28, 26, 20, .72)";
+    ctx.beginPath();
+    ctx.moveTo(x - w * .58, y - h * .03);
+    ctx.lineTo(x + w * .58, y - h * .03);
+    ctx.lineTo(x + w * .48, y + h * .06);
+    ctx.lineTo(x - w * .48, y + h * .06);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
+  if (type === "tower") {
+    ctx.fillStyle = "rgba(47, 49, 46, .96)";
+    for (const side of [-1, 1]) {
+      ctx.fillRect(x + side * w * .28 - w * .09, y - h * .05, w * .18, h * .11);
+    }
+    ctx.restore();
+    return;
+  }
+
+  const slab = ctx.createLinearGradient(0, y - h * .04, 0, y + h * .1);
+  slab.addColorStop(0, mixHexColors(building.roof, "#a5a39a", .34));
+  slab.addColorStop(1, "rgba(28, 31, 31, .98)");
+  ctx.fillStyle = slab;
+  ctx.beginPath();
+  ctx.moveTo(x - w * .54, y - h * .035);
+  ctx.lineTo(x + w * .54, y - h * .035);
+  ctx.lineTo(x + w * .48, y + h * .07);
+  ctx.lineTo(x - w * .48, y + h * .07);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "rgba(233, 237, 226, .16)";
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(39, 42, 41, .98)";
+  ctx.fillRect(x - w * .16, y, w * .32, h * .08);
+  ctx.fillStyle = "rgba(82, 83, 77, .92)";
+  ctx.fillRect(x - w * .12, y + h * .035, w * .24, h * .055);
+  ctx.restore();
+}
+
+function drawExteriorSideDepth(x, y, w, h, building) {
+  const direction = building.index % 2 === 0 ? 1 : -1;
+  const depth = clamp(w * .115, 11, 42);
+  const edgeX = x + direction * w / 2;
+  const offsetX = direction * depth;
+  const offsetY = -depth * .34;
+  const side = ctx.createLinearGradient(edgeX, 0, edgeX + offsetX, 0);
+  side.addColorStop(0, mixHexColors(building.exterior, "#11171a", .48));
+  side.addColorStop(1, "rgba(12, 17, 20, .98)");
+  ctx.fillStyle = side;
+  ctx.beginPath();
+  ctx.moveTo(edgeX, y - h);
+  ctx.lineTo(edgeX + offsetX, y - h + offsetY);
+  ctx.lineTo(edgeX + offsetX, y + offsetY);
+  ctx.lineTo(edgeX, y);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = "rgba(229, 236, 234, .14)";
+  ctx.lineWidth = 1;
+  for (let seam = 1; seam < 4; seam++) {
+    const seamY = y - h + h * seam / 4;
+    ctx.beginPath();
+    ctx.moveTo(edgeX, seamY);
+    ctx.lineTo(edgeX + offsetX, seamY + offsetY);
+    ctx.stroke();
+  }
+}
+
+function drawExteriorWeathering(x, y, w, h, building) {
+  const dirt = ctx.createLinearGradient(0, y - h * .24, 0, y);
+  dirt.addColorStop(0, "rgba(28, 24, 18, 0)");
+  dirt.addColorStop(1, "rgba(24, 21, 17, .42)");
+  ctx.fillStyle = dirt;
+  ctx.fillRect(x - w / 2, y - h * .24, w, h * .24);
+
+  ctx.strokeStyle = "rgba(22, 24, 22, .24)";
+  ctx.lineWidth = Math.max(1, w * .006);
+  const seed = building.index + building.name.length;
+  for (let stain = 0; stain < 3; stain++) {
+    const stainX = x - w * .4 + w * (((seed * 17 + stain * 31) % 79) / 100);
+    const stainTop = y - h * (.78 - stain * .17);
+    ctx.beginPath();
+    ctx.moveTo(stainX, stainTop);
+    ctx.lineTo(stainX + w * .015, stainTop + h * (.1 + stain * .025));
+    ctx.lineTo(stainX - w * .01, stainTop + h * (.18 + stain * .025));
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = "rgba(235, 237, 224, .1)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x - w * .49, y - h * .12);
+  ctx.lineTo(x + w * .49, y - h * .12);
+  ctx.stroke();
+}
+
 function drawBuildingExterior(x, y, scale, building, screenWidth, screenHeight) {
   const w = clamp(building.width * scale, 100, screenWidth * .86);
   const h = clamp(building.height * scale, 82, screenHeight * .76);
@@ -3320,6 +3651,7 @@ function drawBuildingExterior(x, y, scale, building, screenWidth, screenHeight) 
   ctx.beginPath();
   ctx.ellipse(x, y + 5, w * .48, Math.max(10, h * .08), 0, 0, Math.PI * 2);
   ctx.fill();
+  drawExteriorFoundation(x, y, w, h, building, type);
 
   if (nearEntrance) {
     ctx.shadowColor = building.accent;
@@ -3357,6 +3689,7 @@ function drawBuildingExterior(x, y, scale, building, screenWidth, screenHeight) 
     return;
   }
 
+  drawExteriorSideDepth(x, y, w, h, building);
   const facade = ctx.createLinearGradient(x - w / 2, 0, x + w / 2, 0);
   facade.addColorStop(0, "rgba(25, 31, 34, .98)");
   facade.addColorStop(.18, building.exterior);
@@ -3365,6 +3698,7 @@ function drawBuildingExterior(x, y, scale, building, screenWidth, screenHeight) 
   ctx.fillStyle = facade;
   ctx.fillRect(x - w / 2, y - h, w, h);
   drawFacadeTexture(x, y, w, h, building, scale);
+  drawExteriorWeathering(x, y, w, h, building);
   ctx.shadowBlur = 0;
 
   const pitchedRoof = [
@@ -3379,9 +3713,19 @@ function drawBuildingExterior(x, y, scale, building, screenWidth, screenHeight) 
     ctx.lineTo(x + w * .58, y - h);
     ctx.closePath();
     ctx.fill();
+    ctx.fillStyle = mixHexColors(building.roof, "#080b0d", .45);
+    ctx.beginPath();
+    ctx.moveTo(x - w * .58, y - h);
+    ctx.lineTo(x + w * .58, y - h);
+    ctx.lineTo(x + w * .54, y - h * .94);
+    ctx.lineTo(x - w * .54, y - h * .94);
+    ctx.closePath();
+    ctx.fill();
   } else {
     ctx.fillStyle = building.roof;
     ctx.fillRect(x - w * .54, y - h * 1.08, w * 1.08, h * .12);
+    ctx.fillStyle = mixHexColors(building.roof, "#080b0d", .42);
+    ctx.fillRect(x - w * .54, y - h, w * 1.08, h * .055);
     ctx.fillStyle = building.trim;
     ctx.globalAlpha = .54;
     ctx.fillRect(x - w * .5, y - h, w, Math.max(4, h * .035));
@@ -3494,6 +3838,112 @@ function drawBuildingExterior(x, y, scale, building, screenWidth, screenHeight) 
   ctx.strokeStyle = "rgba(255,255,255,.16)";
   ctx.lineWidth = 1.5;
   ctx.strokeRect(x - w / 2, y - h, w, h);
+  ctx.restore();
+}
+
+function drawInteriorWall(x, y, scale, wall, building, screenWidth, screenHeight) {
+  const width = clamp(wall.width * scale, 34, screenWidth * .78);
+  const height = clamp(wall.height * scale, 28, screenHeight * .78);
+  const depth = clamp(wall.depth * scale, 5, 34);
+  const left = x - width / 2;
+  const top = y - height;
+  const palette = interiorPaletteFor(building, wall.roomKind || interiorKindFor(building));
+
+  ctx.save();
+  ctx.fillStyle = "rgba(3, 6, 8, .36)";
+  ctx.fillRect(left + depth * .28, top + depth * .36, width, height);
+
+  const face = ctx.createLinearGradient(left, 0, left + width, 0);
+  face.addColorStop(0, mixHexColors(palette.wallLow, palette.wall, .3));
+  face.addColorStop(.16, palette.wall);
+  face.addColorStop(.82, palette.wall);
+  face.addColorStop(1, palette.wallLow);
+  ctx.fillStyle = face;
+  ctx.fillRect(left, top, width, height);
+
+  ctx.fillStyle = mixHexColors(palette.wallLow, building.ceiling, .35);
+  if (wall.side === "left") {
+    ctx.beginPath();
+    ctx.moveTo(left + width, top);
+    ctx.lineTo(left + width + depth, top + depth * .35);
+    ctx.lineTo(left + width + depth, y);
+    ctx.lineTo(left + width, y);
+    ctx.closePath();
+    ctx.fill();
+  } else if (wall.side === "right") {
+    ctx.beginPath();
+    ctx.moveTo(left, top);
+    ctx.lineTo(left - depth, top + depth * .35);
+    ctx.lineTo(left - depth, y);
+    ctx.lineTo(left, y);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.strokeStyle = palette.line;
+  ctx.lineWidth = Math.max(1, scale * .55);
+  if (wall.roomKind === "rustic") {
+    for (let board = 1; board < 6; board++) {
+      const boardY = top + height * board / 6;
+      ctx.beginPath();
+      ctx.moveTo(left, boardY);
+      ctx.lineTo(left + width, boardY);
+      ctx.stroke();
+    }
+    ctx.fillStyle = colorWithAlpha(building.trim, .64);
+    ctx.fillRect(left, top, Math.max(5, width * .045), height);
+    ctx.fillRect(left + width - Math.max(5, width * .045), top, Math.max(5, width * .045), height);
+  } else if (wall.roomKind === "space") {
+    for (let panel = 1; panel < 4; panel++) {
+      const panelX = left + width * panel / 4;
+      ctx.beginPath();
+      ctx.moveTo(panelX, top);
+      ctx.lineTo(panelX, y);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = colorWithAlpha(building.accent, .48);
+    ctx.strokeRect(left + width * .04, top + height * .08, width * .92, height * .82);
+  } else if (wall.roomKind === "industrial" || wall.roomKind === "military") {
+    for (let panel = 1; panel < 5; panel++) {
+      const panelX = left + width * panel / 5;
+      ctx.beginPath();
+      ctx.moveTo(panelX, top);
+      ctx.lineTo(panelX, y);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "rgba(12, 17, 18, .32)";
+    ctx.fillRect(left, top + height * .42, width, Math.max(4, height * .08));
+  } else {
+    ctx.strokeRect(left + width * .045, top + height * .08, width * .91, height * .82);
+    ctx.beginPath();
+    ctx.moveTo(x, top + height * .08);
+    ctx.lineTo(x, y - height * .1);
+    ctx.stroke();
+  }
+
+  const trimHeight = clamp(height * .055, 5, 16);
+  ctx.fillStyle = colorWithAlpha(building.trim, .82);
+  ctx.fillRect(left, y - trimHeight, width, trimHeight);
+  ctx.fillStyle = colorWithAlpha(building.ceiling, .9);
+  ctx.fillRect(left, top, width, Math.max(4, trimHeight * .65));
+
+  if (wall.side === "left" || wall.side === "right") {
+    const frameWidth = clamp(depth * .7, 5, 18);
+    const frameX = wall.side === "left" ? left + width - frameWidth : left;
+    ctx.fillStyle = building.trim;
+    ctx.fillRect(frameX, top, frameWidth, height);
+    ctx.fillStyle = colorWithAlpha(building.accent, .5);
+    ctx.fillRect(
+      wall.side === "left" ? frameX - 2 : frameX + frameWidth,
+      top,
+      2,
+      height
+    );
+  }
+
+  ctx.strokeStyle = "rgba(238, 244, 241, .2)";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(left, top, width, height);
   ctx.restore();
 }
 
