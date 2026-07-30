@@ -431,6 +431,12 @@ const MOVE_EXHAUSTION_RATE = 2;
 const SPRINT_EXHAUSTION_RATE = 3;
 const REST_EXHAUSTION_RATE = 2;
 const CHARACTER_WORLD_HEIGHT = 118;
+const TEAM_COLORS = {
+  Blue: "#2f82b7",
+  Red: "#9c3d43",
+  Yellow: "#c49a35",
+  Green: "#43865a"
+};
 
 function createStarterInventory() {
   return [
@@ -465,11 +471,14 @@ const state = {
   duelPhase: "menu",
   phaseTimer: 0,
   roundMessage: "",
-  player: { x: 0, y: 0, angle: 0, pitch: 0, health: 150, stamina: 150, exhausted: false, z: 0, vz: 0, reload: 0, shootCd: 0, trapped: 0 },
+  playerTeam: "Blue",
+  playerRespawnTimer: 0,
+  player: { x: 0, y: 0, angle: 0, pitch: 0, health: 150, stamina: 150, exhausted: false, z: 0, vz: 0, reload: 0, shootCd: 0, trapped: 0, alive: true, team: "Blue" },
   weaponRank: 1,
   armorRank: 1,
   ammo: 1,
   enemies: [],
+  beds: [],
   traps: [],
   props: [],
   tracers: [],
@@ -582,8 +591,8 @@ function addChat(text) {
 function modeEnemyCount() {
   if (isRivalDuel()) return 1;
   if (state.mode.includes("1v1")) return 1;
-  if (state.mode.includes("4v4")) return 4;
-  if (state.mode.includes("6v6")) return 6;
+  if (state.mode.includes("4v4")) return 7;
+  if (state.mode.includes("6v6")) return 11;
   if (state.mode.includes("8")) return 7;
   if (state.mode.includes("Bedwars")) return 11;
   return 5;
@@ -591,6 +600,89 @@ function modeEnemyCount() {
 
 function isRivalDuel() {
   return state.mode.includes("Rival Duel");
+}
+
+function isTeamBattle() {
+  return state.mode.includes("Team battle");
+}
+
+function isFreeForAll() {
+  return state.mode.includes("Free for all");
+}
+
+function isBedwars() {
+  return state.mode.includes("Bedwars");
+}
+
+function usesTeams() {
+  return isTeamBattle() || isBedwars();
+}
+
+function teamForEnemyIndex(index) {
+  if (state.mode.includes("4v4")) return index < 3 ? "Blue" : "Red";
+  if (state.mode.includes("6v6")) return index < 5 ? "Blue" : "Red";
+  if (isBedwars()) {
+    if (index < 2) return "Blue";
+    if (index < 5) return "Red";
+    if (index < 8) return "Yellow";
+    return "Green";
+  }
+  if (isFreeForAll()) return `Solo ${index + 1}`;
+  return "Red";
+}
+
+function playerIsPresent() {
+  return state.player.alive !== false && state.playerRespawnTimer <= 0;
+}
+
+function enemyIsOpponent(enemy) {
+  return !usesTeams() || enemy.team !== state.playerTeam;
+}
+
+function areCombatantsHostile(first, second) {
+  if (!usesTeams()) return first !== second;
+  const firstTeam = first === state.player ? state.playerTeam : first.team;
+  const secondTeam = second === state.player ? state.playerTeam : second.team;
+  return firstTeam !== secondTeam;
+}
+
+function aliveOpponents() {
+  return state.enemies.filter(enemy => enemy.alive && enemyIsOpponent(enemy));
+}
+
+function aliveAllies() {
+  return state.enemies.filter(enemy => enemy.alive && !enemyIsOpponent(enemy));
+}
+
+function teamBed(team) {
+  return state.beds.find(bed => bed.team === team) || null;
+}
+
+function basePositionForTeam(team, size) {
+  const bases = {
+    Blue: { x: -size * .34, y: 0, angle: 0 },
+    Red: { x: size * .34, y: 0, angle: Math.PI },
+    Yellow: { x: 0, y: -size * .34, angle: Math.PI / 2 },
+    Green: { x: 0, y: size * .34, angle: -Math.PI / 2 }
+  };
+  return bases[team] || { x: 0, y: 0, angle: 0 };
+}
+
+function createBedwarsBeds(size) {
+  return ["Blue", "Red", "Yellow", "Green"].map(team => {
+    const base = basePositionForTeam(team, size);
+    return {
+      id: `bed-${team.toLowerCase()}`,
+      kind: "bed",
+      team,
+      x: base.x,
+      y: base.y,
+      health: 120,
+      maxHealth: 120,
+      alive: true,
+      radius: 68
+    };
+  });
 }
 
 function arenaSize() {
@@ -837,7 +929,7 @@ function clearBuildingTransitionEffects() {
 }
 
 function enterBuilding() {
-  if (!state.running || state.insideBuilding || state.buildingCooldown > 0 || !nearExteriorEntrance()) return false;
+  if (!state.running || !playerIsPresent() || state.insideBuilding || state.buildingCooldown > 0 || !nearExteriorEntrance()) return false;
   const building = activeBuilding();
   const p = state.player;
   for (const enemy of state.enemies) {
@@ -1084,7 +1176,14 @@ function spawnEnemies(size) {
   const botDifficulty = difficulty();
   state.enemies = [];
   for (let i = 0; i < modeEnemyCount(); i++) {
-    const p = randomPoint(size);
+    const team = teamForEnemyIndex(i);
+    const teamBase = basePositionForTeam(team, size);
+    const p = usesTeams()
+      ? {
+          x: teamBase.x + rand(-150, 150),
+          y: teamBase.y + rand(-210, 210)
+        }
+      : randomPoint(size);
     const rank = isRivalDuel()
       ? state.weaponRank
       : clamp(Math.floor(state.level / 2) + 1 + Math.floor(rand(0, 4)), 1, weapons.length);
@@ -1094,6 +1193,7 @@ function spawnEnemies(size) {
     state.enemies.push({
       id: names[i],
       ...p,
+      team,
       angle: rand(0, Math.PI * 2),
       health,
       maxHealth: health,
@@ -1118,7 +1218,10 @@ function spawnEnemies(size) {
       buildingEntered: false,
       buildingExitPending: false,
       buildingExitTimer: 0,
-      buildingExitPoint: null
+      buildingExitPoint: null,
+      spawnX: p.x,
+      spawnY: p.y,
+      respawnTimer: 0
     });
   }
 }
@@ -1129,7 +1232,8 @@ function resetCombatants(regenerateArena = true) {
   state.currentBuildingId = null;
   state.buildingReturn = null;
   state.buildingCooldown = 0;
-  state.player = { x: 0, y: 0, angle: 0, pitch: 0, health: 150, stamina: 150, exhausted: false, z: 0, vz: 0, reload: 0, shootCd: 0, trapped: 0 };
+  state.playerRespawnTimer = 0;
+  state.player = { x: 0, y: 0, angle: 0, pitch: 0, health: 150, stamina: 150, exhausted: false, z: 0, vz: 0, reload: 0, shootCd: 0, trapped: 0, alive: true, team: state.playerTeam };
   state.inventory = createStarterInventory();
   if (state.armorRank >= 16) state.player.health = 190;
   state.ammo = weapon().magazine;
@@ -1149,6 +1253,7 @@ function resetCombatants(regenerateArena = true) {
   } else if (regenerateArena) {
     generateTraps(size);
   }
+  state.beds = isBedwars() ? createBedwarsBeds(size) : [];
   spawnEnemies(size);
 
   if (isRivalDuel()) {
@@ -1161,6 +1266,22 @@ function resetCombatants(regenerateArena = true) {
     rival.angle = Math.PI;
     rival.targetId = "player";
     rival.targetCd = 4;
+  } else if (state.mode.includes("1v1")) {
+    state.player.x = -size * .28;
+    state.player.y = 0;
+    state.player.angle = 0;
+    const opponent = state.enemies[0];
+    opponent.x = size * .28;
+    opponent.y = 0;
+    opponent.spawnX = opponent.x;
+    opponent.spawnY = opponent.y;
+    opponent.angle = Math.PI;
+    opponent.targetId = "player";
+  } else if (usesTeams()) {
+    const playerBase = basePositionForTeam(state.playerTeam, size);
+    state.player.x = playerBase.x + 90;
+    state.player.y = playerBase.y;
+    state.player.angle = playerBase.angle;
   }
 
   renderInventory();
@@ -1174,6 +1295,15 @@ function startDuelRound(regenerateArena = false) {
   state.phaseTimer = 3.2;
   state.roundMessage = "";
   addChat(`Round ${state.roundNumber}: you versus ${state.enemies[0].id}.`);
+}
+
+function modeObjectiveText() {
+  if (isRivalDuel()) return "Win 5 rounds before your rival.";
+  if (state.mode.includes("1v1")) return "Eliminate the rival before they eliminate you.";
+  if (isTeamBattle()) return "Fight with the Blue team and eliminate the Red team.";
+  if (isFreeForAll()) return "Be the last player standing.";
+  if (isBedwars()) return "Protect the Blue bed, break the other beds, and eliminate every enemy team.";
+  return "Eliminate every opponent.";
 }
 
 function resetMatch() {
@@ -1192,7 +1322,7 @@ function resetMatch() {
     state.running = true;
     resetCombatants(true);
     addChat(`${state.mode} started on ${state.map.name} at ${state.difficulty} difficulty.`);
-    addChat("Eliminate every opponent before they eliminate you.");
+    addChat(modeObjectiveText());
   }
 }
 
@@ -1207,15 +1337,138 @@ function finishDuelRound(playerWon, reason) {
   addChat(`${state.roundMessage}. Score: ${state.playerRounds}-${state.rivalRounds}${reason ? ` (${reason})` : ""}.`);
 }
 
+function eliminateEnemy(enemy, message, playerKill = false) {
+  if (!enemy.alive) return false;
+  enemy.alive = false;
+  enemy.targetId = null;
+  enemy.targetCd = 0;
+  state.lastNoKillCheck = state.time;
+  if (playerKill) {
+    state.kills += 1;
+    state.diamonds += 2;
+  }
+  const bed = isBedwars() ? teamBed(enemy.team) : null;
+  enemy.respawnTimer = bed?.alive ? 4 : 0;
+  addChat(message);
+  if (enemy.respawnTimer > 0) addChat(`${enemy.id} will respawn while the ${enemy.team} bed is standing.`);
+  handleAllEnemiesDefeated(`${enemy.id} eliminated`);
+  return true;
+}
+
+function respawnEnemy(enemy) {
+  const size = arenaSize();
+  const base = basePositionForTeam(enemy.team, size);
+  enemy.x = enemy.spawnX ?? base.x;
+  enemy.y = enemy.spawnY ?? base.y;
+  enemy.angle = base.angle;
+  enemy.health = enemy.maxHealth;
+  enemy.stamina = 150;
+  enemy.exhausted = false;
+  enemy.trapped = 0;
+  enemy.alive = true;
+  enemy.respawnTimer = 0;
+  enemy.targetId = null;
+  enemy.targetCd = 0;
+  enemy.shootCd = 1;
+  enemy.supplies = { water: 1, apple: 1, sandwich: 1 };
+  addChat(`${enemy.id} respawned for the ${enemy.team} team.`);
+}
+
+function respawnPlayer() {
+  const base = basePositionForTeam(state.playerTeam, arenaSize());
+  const maximumHealth = state.armorRank >= 16 ? 190 : 150;
+  state.player.x = base.x + 90;
+  state.player.y = base.y;
+  state.player.angle = base.angle;
+  state.player.pitch = 0;
+  state.player.z = 0;
+  state.player.vz = 0;
+  state.player.health = maximumHealth;
+  state.player.stamina = 150;
+  state.player.exhausted = false;
+  state.player.trapped = 0;
+  state.player.reload = 0;
+  state.player.shootCd = 0;
+  state.player.alive = true;
+  state.playerRespawnTimer = 0;
+  state.ammo = weapon().magazine;
+  addChat("You respawned at the Blue bed.");
+}
+
+function updateBedwarsRespawns(dt) {
+  if (!isBedwars()) return;
+  if (!state.player.alive && state.playerRespawnTimer > 0) {
+    if (teamBed(state.playerTeam)?.alive) {
+      state.playerRespawnTimer = Math.max(0, state.playerRespawnTimer - dt);
+      if (state.playerRespawnTimer <= 0) respawnPlayer();
+    } else {
+      state.playerRespawnTimer = 0;
+      endMatch(false, "Your bed was destroyed, so you could not respawn.");
+      return;
+    }
+  }
+  if (state.insideBuilding) return;
+  for (const enemy of state.enemies) {
+    if (enemy.alive || enemy.respawnTimer <= 0) continue;
+    if (!teamBed(enemy.team)?.alive) {
+      enemy.respawnTimer = 0;
+      continue;
+    }
+    enemy.respawnTimer = Math.max(0, enemy.respawnTimer - dt);
+    if (enemy.respawnTimer <= 0) respawnEnemy(enemy);
+  }
+}
+
+function damageBed(bed, amount, attacker) {
+  if (!bed?.alive || !isBedwars()) return false;
+  bed.health = clamp(bed.health - amount, 0, bed.maxHealth);
+  spawnImpact(bed.x, bed.y, "#ffd166", 16);
+  spawnFloatingText(bed.x, bed.y, `-${amount.toFixed(0)}`, "#ffd166", .8, 46);
+  if (bed.health > 0) return false;
+  bed.alive = false;
+  for (const enemy of state.enemies) {
+    if (enemy.team === bed.team && !enemy.alive) enemy.respawnTimer = 0;
+  }
+  addChat(`${attacker} destroyed the ${bed.team} bed. That team can no longer respawn.`);
+  handleAllEnemiesDefeated(`${bed.team} bed destroyed`);
+  return true;
+}
+
 function handlePlayerDefeat(reason) {
+  if (isBedwars() && state.player.alive && teamBed(state.playerTeam)?.alive) {
+    if (state.insideBuilding) {
+      state.buildingCooldown = 0;
+      exitBuilding(true);
+    }
+    state.player.alive = false;
+    state.player.health = 0;
+    state.playerRespawnTimer = 4;
+    addChat(`${reason || "You were eliminated."} Respawning in 4 seconds.`);
+    return;
+  }
   if (isRivalDuel()) finishDuelRound(false, reason);
   else endMatch(false, reason);
 }
 
 function handleAllEnemiesDefeated(reason = "Rival eliminated") {
-  if (!state.enemies.every(enemy => !enemy.alive)) return;
-  if (isRivalDuel()) finishDuelRound(true, reason);
-  else endMatch(true);
+  if (isRivalDuel()) {
+    if (state.enemies.every(enemy => !enemy.alive)) finishDuelRound(true, reason);
+    return;
+  }
+  if (!state.running) return;
+  if (isBedwars()) {
+    const enemyTeams = ["Red", "Yellow", "Green"];
+    const enemyTeamActive = enemyTeams.some(team => (
+      teamBed(team)?.alive || state.enemies.some(enemy => enemy.team === team && enemy.alive)
+    ));
+    if (!enemyTeamActive) endMatch(true, reason);
+    return;
+  }
+  if (isTeamBattle()) {
+    if (aliveOpponents().length === 0) endMatch(true, reason);
+    return;
+  }
+  if (state.enemies.every(enemy => !enemy.alive)) endMatch(true, reason);
 }
 
 function endMatch(won, reason) {
@@ -1243,7 +1496,7 @@ function endMatch(won, reason) {
 }
 
 function takeDamage(amount, source) {
-  if (!state.running) return;
+  if (!state.running || !playerIsPresent()) return;
   const reduced = amount * (1 - armor().protection);
   state.player.health = clamp(state.player.health - reduced, 0, 220);
   const attacker = state.enemies.find(enemy => enemy.id === source);
@@ -1583,7 +1836,7 @@ function spawnFloatingText(x, y, text, color, life = .8, lift = 44) {
 
 function useSlot(index) {
   const item = state.inventory[index];
-  if (!item || item.count <= 0 || !state.running) return;
+  if (!item || item.count <= 0 || !state.running || !playerIsPresent()) return;
   if (item.type === "food") {
     state.player.health = clamp(state.player.health + item.heal, 0, state.armorRank >= 16 ? 190 : 150);
     addChat(`You ate ${item.name} and restored ${item.heal} health.`);
@@ -1598,13 +1851,13 @@ function useSlot(index) {
 }
 
 function reload() {
-  if (!state.running || state.player.reload > 0 || state.ammo === weapon().magazine) return;
+  if (!state.running || !playerIsPresent() || state.player.reload > 0 || state.ammo === weapon().magazine) return;
   state.player.reload = 1.1;
   addChat(`Reloading ${weapon().name}. Ammo is infinite.`);
 }
 
 function shoot() {
-  if (!state.running || state.player.shootCd > 0 || state.player.reload > 0) return;
+  if (!state.running || !playerIsPresent() || state.player.shootCd > 0 || state.player.reload > 0) return;
   const w = weapon();
   if (state.ammo <= 0) {
     reload();
@@ -1629,29 +1882,31 @@ function shoot() {
   state.muzzleFlash = .075;
   state.shake = Math.max(state.shake, .11);
   if (hit) {
-    const enemyArmor = armors[hit.armor - 1] || armors[0];
-    const damage = w.damage * 4.5 * (1 - enemyArmor.protection * .55);
-    hit.health -= damage;
-    if (hit.health > 0) {
-      hit.targetId = "player";
-      hit.targetCd = 4;
-      hit.strafeDir *= -1;
-      hit.tacticCd = 0;
+    const hitBed = hit.kind === "bed";
+    const enemyArmor = hitBed ? armors[0] : armors[hit.armor - 1] || armors[0];
+    const damage = hitBed
+      ? w.damage * 5.5
+      : w.damage * 4.5 * (1 - enemyArmor.protection * .55);
+    if (hitBed) {
+      damageBed(hit, damage, "You");
+    } else {
+      hit.health -= damage;
+      if (hit.health > 0) {
+        hit.targetId = "player";
+        hit.targetCd = 4;
+        hit.strafeDir *= -1;
+        hit.tacticCd = 0;
+      }
     }
     state.hitMarker = .22;
     playImpactSound(false);
     spawnImpact(hit.x, hit.y, "#ffd27a", 19);
     spawnFloatingText(hit.x, hit.y, damage.toFixed(0), "#ffe37a", .9, 58);
-    addChat(`You hit ${hit.id} with ${w.name} for ${damage.toFixed(1)} XP.`);
-    if (hit.health <= 0 && hit.alive) {
-      hit.alive = false;
-      state.kills += 1;
-      state.diamonds += 2;
+    addChat(`You hit ${hitBed ? `${hit.team} bed` : hit.id} with ${w.name} for ${damage.toFixed(1)} XP.`);
+    if (!hitBed && hit.health <= 0 && hit.alive) {
       spawnImpact(hit.x, hit.y, "#67e08a", 30);
       spawnFloatingText(hit.x, hit.y, "ELIM", "#67e08a", 1.2, 84);
-      addChat(`${hit.id} was eliminated. +2 diamonds.`);
-      state.lastNoKillCheck = state.time;
-      handleAllEnemiesDefeated(`${hit.id} eliminated`);
+      eliminateEnemy(hit, `${hit.id} was eliminated. +2 diamonds.`, true);
     }
   } else {
     spawnSurfaceImpact(surfaceImpact);
@@ -1673,7 +1928,7 @@ function findTargetInCrosshair(range) {
   let bestDistance = Infinity;
   const p = state.player;
   for (const e of state.enemies) {
-    if (!enemyIsPresent(e)) continue;
+    if (!enemyIsPresent(e) || !enemyIsOpponent(e)) continue;
     const dx = e.x - p.x;
     const dy = e.y - p.y;
     const d = Math.hypot(dx, dy);
@@ -1689,16 +1944,48 @@ function findTargetInCrosshair(range) {
       bestDistance = d;
     }
   }
+  if (isBedwars() && !state.insideBuilding) {
+    for (const bed of state.beds) {
+      if (!bed.alive || bed.team === state.playerTeam) continue;
+      const dx = bed.x - p.x;
+      const dy = bed.y - p.y;
+      const d = Math.hypot(dx, dy);
+      if (d > range || d >= bestDistance) continue;
+      const angle = Math.atan2(dy, dx);
+      const spread = clamp(bed.radius / d, .035, .18);
+      const horizontallyAimed = Math.abs(angleDiff(angle, p.angle)) < spread;
+      const verticallyAimed = Math.abs(p.pitch) < clamp(55 / d, .035, .14);
+      if (horizontallyAimed && verticallyAimed) {
+        best = bed;
+        bestDistance = d;
+      }
+    }
+  }
   return best;
 }
 
 function chooseEnemyTarget(enemy) {
-  const rivals = state.enemies.filter(candidate => enemyIsPresent(candidate) && candidate !== enemy);
+  const rivals = state.enemies.filter(candidate => (
+    enemyIsPresent(candidate)
+    && candidate !== enemy
+    && areCombatantsHostile(enemy, candidate)
+  ));
+  const hostileBeds = isBedwars() && !state.insideBuilding
+    ? state.beds.filter(bed => bed.alive && bed.team !== enemy.team)
+    : [];
   const botDifficulty = difficulty();
-  const targetPlayer = !rivals.length || Math.random() < botDifficulty.playerFocus;
-  const target = targetPlayer
-    ? state.player
-    : rivals
+  const canTargetPlayer = playerIsPresent() && areCombatantsHostile(enemy, state.player);
+  const targetPlayer = canTargetPlayer
+    && (!rivals.length || Math.random() < botDifficulty.playerFocus);
+  let target = targetPlayer ? state.player : null;
+
+  if (!target && hostileBeds.length && (rivals.length === 0 || Math.random() < .3)) {
+    target = hostileBeds
+      .map(bed => ({ bed, score: dist(enemy, bed) * rand(.9, 1.12) }))
+      .sort((a, b) => a.score - b.score)[0].bed;
+  }
+  if (!target && rivals.length) {
+    target = rivals
       .map(candidate => ({
         candidate,
         score: dist(enemy, candidate)
@@ -1706,19 +1993,41 @@ function chooseEnemyTarget(enemy) {
           * rand(.82, 1.18)
       }))
       .sort((a, b) => a.score - b.score)[0].candidate;
+  }
+  if (!target && hostileBeds.length) {
+    target = hostileBeds
+      .map(bed => ({ bed, score: dist(enemy, bed) }))
+      .sort((a, b) => a.score - b.score)[0].bed;
+  }
+  if (!target && canTargetPlayer) target = state.player;
+  if (!target) {
+    enemy.targetId = null;
+    enemy.targetCd = .6;
+    return null;
+  }
   enemy.targetId = target === state.player ? "player" : target.id;
   enemy.targetCd = (target === state.player ? rand(1.5, 3) : rand(.85, 1.9)) * botDifficulty.reaction;
   return target;
 }
 
 function resolveEnemyTarget(enemy) {
-  if (enemy.targetId === "player") return state.player;
-  return state.enemies.find(candidate => enemyIsPresent(candidate) && candidate.id === enemy.targetId) || null;
+  if (enemy.targetId === "player") {
+    return playerIsPresent() && areCombatantsHostile(enemy, state.player) ? state.player : null;
+  }
+  const bed = state.beds.find(candidate => candidate.alive && candidate.id === enemy.targetId);
+  if (bed) return bed.team !== enemy.team && !state.insideBuilding ? bed : null;
+  return state.enemies.find(candidate => (
+    enemyIsPresent(candidate)
+    && candidate.id === enemy.targetId
+    && areCombatantsHostile(enemy, candidate)
+  )) || null;
 }
 
 function enemyShoot(enemy, target, dt) {
   if (!enemyIsPresent(enemy) || enemy.trapped > 0 || !target) return;
-  if (target !== state.player && !enemyIsPresent(target)) return;
+  const targetIsBed = target.kind === "bed";
+  if (target !== state.player && !targetIsBed && !enemyIsPresent(target)) return;
+  if (!areCombatantsHostile(enemy, target)) return;
   enemy.shootCd -= dt;
   const botDifficulty = difficulty();
   const targetIsPlayer = target === state.player;
@@ -1749,6 +2058,8 @@ function enemyShoot(enemy, target, dt) {
       spawnImpact(target.x, target.y, targetIsPlayer ? "#ff7b72" : "#ffd27a", 9);
       if (targetIsPlayer) {
         takeDamage(w.damage * rand(.22, .44) * botDifficulty.damage, enemy.id);
+      } else if (targetIsBed) {
+        damageBed(target, w.damage * rand(.9, 1.35) * botDifficulty.damage, enemy.id);
       } else {
         const targetArmor = armors[target.armor - 1] || armors[0];
         const damage = w.damage * rand(.28, .52) * (1 - targetArmor.protection * .55) * botDifficulty.damage;
@@ -1761,12 +2072,10 @@ function enemyShoot(enemy, target, dt) {
           target.tacticCd = 0;
         }
         if (target.health <= 0 && target.alive) {
-          target.alive = false;
           enemy.targetCd = 0;
-          state.lastNoKillCheck = state.time;
           spawnImpact(target.x, target.y, "#67e08a", 24);
           spawnFloatingText(target.x, target.y, "ELIM", "#67e08a", 1.1, 78);
-          addChat(`${enemy.id} eliminated ${target.id}.`);
+          eliminateEnemy(target, `${enemy.id} eliminated ${target.id}.`);
         }
       }
     } else {
@@ -1792,6 +2101,7 @@ function updateExhaustionState(entity, isPlayer) {
 function updatePlayer(dt) {
   const p = state.player;
   state.buildingCooldown = Math.max(0, state.buildingCooldown - dt);
+  if (!playerIsPresent()) return;
   p.shootCd = Math.max(0, p.shootCd - dt);
   p.reload = Math.max(0, p.reload - dt);
   p.health = clamp(p.health - .5 * dt, 0, 220);
@@ -1882,10 +2192,7 @@ function updateEnemySupplies(enemy, dt) {
   updateExhaustionState(enemy, false);
   enemy.health = clamp(enemy.health - .5 * dt, 0, enemy.maxHealth);
   if (enemy.health <= 0) {
-    enemy.alive = false;
-    state.lastNoKillCheck = state.time;
-    addChat(`${enemy.id} ran out of health.`);
-    handleAllEnemiesDefeated(`${enemy.id} ran out of health`);
+    eliminateEnemy(enemy, `${enemy.id} ran out of health.`);
     return false;
   }
   enemy.supplyCd = Math.max(0, enemy.supplyCd - dt);
@@ -1980,6 +2287,7 @@ function updateEnemies(dt) {
     if (!target || e.targetCd <= 0 || dist(e, target) > weapons[e.weaponRank - 1].range * 1.15) {
       target = chooseEnemyTarget(e);
     }
+    if (!target) continue;
     e.tacticCd -= dt;
     if (e.tacticCd <= 0) {
       if (Math.random() < .42) e.strafeDir *= -1;
@@ -2041,10 +2349,7 @@ function applyTrapDamage(entity, isPlayer, amount, source) {
   }
   entity.health -= amount;
   if (entity.health > 0 || !entity.alive) return;
-  entity.alive = false;
-  state.lastNoKillCheck = state.time;
-  addChat(`${entity.id} was eliminated by ${source}.`);
-  handleAllEnemiesDefeated(`${entity.id} triggered ${source}`);
+  eliminateEnemy(entity, `${entity.id} was eliminated by ${source}.`);
 }
 
 function checkEntityTraps(entity, isPlayer) {
@@ -2108,10 +2413,7 @@ function updateTrapsByTime() {
     const alive = state.enemies.filter(e => e.alive);
     if (alive.length) {
       const unlucky = alive[Math.floor(Math.random() * alive.length)];
-      unlucky.alive = false;
-      addChat(`No eliminations for 4 minutes. The server removed ${unlucky.id}.`);
-      state.lastNoKillCheck = state.time;
-      handleAllEnemiesDefeated(`${unlucky.id} was removed`);
+      eliminateEnemy(unlucky, `No eliminations for 4 minutes. The server removed ${unlucky.id}.`);
     }
   }
 }
@@ -2150,11 +2452,13 @@ function update(dt) {
   }
   if (!state.running) return;
   state.time += dt;
+  updateBedwarsRespawns(dt);
+  if (!state.running) return;
   updatePlayer(dt);
   if (!state.running) return;
   updateEnemies(dt);
   if (!state.running) return;
-  if (!state.insideBuilding) checkEntityTraps(state.player, true);
+  if (!state.insideBuilding && playerIsPresent()) checkEntityTraps(state.player, true);
   updateTrapsByTime();
   updateVisualEffects(dt);
   if (state.time > 1200 && state.time - dt <= 1200) {
@@ -3042,6 +3346,7 @@ function drawSprites(width, height, horizon) {
     }
     for (const prop of state.props) sprites.push({ kind: "prop", obj: prop, depth: project(prop).z });
     for (const trap of state.traps) if (trap.active) sprites.push({ kind: "trap", obj: trap, depth: project(trap).z });
+    for (const bed of state.beds) if (bed.alive) sprites.push({ kind: "bed", obj: bed, depth: project(bed).z });
   }
   for (const mark of state.bulletMarks) {
     if (mark.area === impactAreaKey() && mark.surface !== "ground") {
@@ -3071,6 +3376,7 @@ function drawSprites(width, height, horizon) {
     }
     if (sprite.kind === "prop") drawProp(screenX, base, scale, sprite.obj);
     if (sprite.kind === "trap") drawTrap(screenX, base, scale, sprite.obj);
+    if (sprite.kind === "bed") drawBed(screenX, base, scale, sprite.obj);
     if (sprite.kind === "enemy") drawEnemy(screenX, base, scale, sprite.obj);
   }
 
@@ -4597,6 +4903,39 @@ function drawProp(x, y, scale, prop) {
   ctx.globalAlpha = 1;
 }
 
+function drawBed(x, y, scale, bed) {
+  const width = clamp(112 * scale, 24, 150);
+  const height = clamp(48 * scale, 14, 70);
+  const teamColor = TEAM_COLORS[bed.team] || "#8f3438";
+  const healthRatio = clamp(bed.health / bed.maxHealth, 0, 1);
+  ctx.save();
+  ctx.fillStyle = "rgba(0, 0, 0, .38)";
+  ctx.beginPath();
+  ctx.ellipse(x, y + 3, width * .58, height * .22, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#20262c";
+  ctx.fillRect(x - width * .5, y - height * .55, width, height * .54);
+  ctx.fillStyle = teamColor;
+  ctx.fillRect(x - width * .46, y - height * .86, width * .92, height * .48);
+  ctx.fillStyle = "rgba(255,255,255,.3)";
+  ctx.fillRect(x - width * .4, y - height * .79, width * .26, height * .22);
+  ctx.fillStyle = "#161b20";
+  ctx.fillRect(x - width * .44, y - height * .08, width * .11, height * .3);
+  ctx.fillRect(x + width * .33, y - height * .08, width * .11, height * .3);
+  ctx.strokeStyle = "rgba(255,255,255,.24)";
+  ctx.lineWidth = Math.max(1, scale * 2);
+  ctx.strokeRect(x - width * .5, y - height * .86, width, height * .82);
+  ctx.fillStyle = "rgba(0,0,0,.65)";
+  ctx.fillRect(x - width * .5, y - height - 10, width, 6);
+  ctx.fillStyle = healthRatio > .45 ? "#67e08a" : "#ff6b6b";
+  ctx.fillRect(x - width * .5 + 1, y - height - 9, (width - 2) * healthRatio, 4);
+  ctx.fillStyle = "#eef5f7";
+  ctx.font = `700 ${clamp(12 * scale, 9, 15)}px sans-serif`;
+  ctx.textAlign = "center";
+  ctx.fillText(`${bed.team.toUpperCase()} BED`, x, y - height - 15);
+  ctx.restore();
+}
+
 function drawTrap(x, y, scale, trap) {
   const r = clamp(trap.radius * scale, 8, 48);
   ctx.save();
@@ -4709,7 +5048,11 @@ function characterScreenHeight(scale) {
 function drawEnemy(x, y, scale, enemy) {
   const h = characterScreenHeight(scale);
   const w = h * .34;
-  const armorColor = enemy.trapped > 0 ? "#d4a743" : "#8f3438";
+  const armorColor = enemy.trapped > 0
+    ? "#d4a743"
+    : usesTeams()
+      ? TEAM_COLORS[enemy.team] || "#8f3438"
+      : "#8f3438";
   ctx.save();
   ctx.globalAlpha = clamp(.45 + scale * .35, .58, 1);
   ctx.fillStyle = "rgba(0,0,0,.32)";
@@ -4883,7 +5226,9 @@ function updateUi() {
   ui.healthMeter.max = state.armorRank >= 16 ? 190 : 150;
   ui.healthMeter.value = p.health;
   ui.staminaMeter.value = p.stamina;
-  ui.healthText.textContent = Math.ceil(p.health);
+  ui.healthText.textContent = state.playerRespawnTimer > 0
+    ? `RESPAWN ${Math.ceil(state.playerRespawnTimer)}`
+    : Math.ceil(p.health);
   ui.staminaText.textContent = p.exhausted ? "REST" : Math.ceil(p.stamina);
   const minutes = Math.floor(state.time / 60).toString().padStart(2, "0");
   const seconds = Math.floor(state.time % 60).toString().padStart(2, "0");
@@ -4893,16 +5238,23 @@ function updateUi() {
   ui.mapText.textContent = state.insideBuilding
     ? `Map: ${state.map.name} | ${activeBuilding().name}`
     : `Map: ${state.map.name}`;
-  ui.enemyText.textContent = isRivalDuel()
-    ? `Rival: ${state.enemies[0]?.id || "Waiting"}`
-    : `Opponents: ${state.enemies.filter(e => e.alive).length}`;
+  if (isRivalDuel()) {
+    ui.enemyText.textContent = `Rival: ${state.enemies[0]?.id || "Waiting"}`;
+  } else if (usesTeams()) {
+    ui.enemyText.textContent = `Enemies: ${aliveOpponents().length} | Allies: ${aliveAllies().length}`;
+  } else {
+    ui.enemyText.textContent = `Opponents: ${state.enemies.filter(e => e.alive).length}`;
+  }
   ui.difficultyText.textContent = `Difficulty: ${state.difficulty}`;
   ui.weaponText.textContent = `Weapon: ${weapon().name}`;
   ui.ammoText.textContent = state.player.reload > 0 ? "Reloading..." : `Ammo: ${state.ammo} / ${weapon().magazine}`;
   const trapSummary = `Mines ${countTraps("mine")} | Snares ${countTraps("snare")} | Holes ${countTraps("hole")} | Spikes ${countTraps("pitfall")}`;
+  const bedSummary = isBedwars()
+    ? ` | Beds ${state.beds.filter(bed => bed.alive).map(bed => bed.team[0]).join("/") || "none"}`
+    : "";
   ui.trapText.textContent = isRivalDuel()
     ? `Mirrored traps | ${trapSummary}`
-    : trapSummary;
+    : `${trapSummary}${bedSummary}`;
   ui.loadoutText.textContent = `${weapon().name} + ${armor().name}`;
 
   if (isRivalDuel()) {
@@ -4924,7 +5276,7 @@ function updateUi() {
   } else {
     ui.duelHud.classList.add("hidden");
     ui.roundBanner.classList.add("hidden");
-    ui.rewardText.textContent = "Win: diamonds, level XP, and survival bonuses.";
+    ui.rewardText.textContent = modeObjectiveText();
   }
 }
 
@@ -5079,7 +5431,10 @@ canvas.addEventListener("mousedown", event => {
 ui.spinMapBtn.addEventListener("click", spinMap);
 ui.modeSelect.addEventListener("change", () => {
   state.mode = ui.modeSelect.value;
+  ui.overlayTitle.textContent = "Enter the arena";
+  ui.overlayBody.textContent = modeObjectiveText();
   addChat(`Mode set to ${state.mode}.`);
+  updateUi();
 });
 ui.difficultyButtons.forEach(button => {
   button.addEventListener("click", () => {
@@ -5091,16 +5446,6 @@ ui.difficultyButtons.forEach(button => {
 });
 ui.startBtn.addEventListener("click", () => {
   if (!state.selectedMap) spinMap();
-  if (state.mode.includes("Bedwars") && (state.diamonds < 100 || state.level < 2)) {
-    addChat("Gain more diamonds and levels, you do not have enough.");
-    return;
-  }
-  if (state.mode.includes("Bedwars")) {
-    state.diamonds -= 100;
-    state.level -= 2;
-    state.shards += 1;
-    addChat("Bedwars entry paid. One shard found in your starter chest.");
-  }
   resetMatch();
 });
 ui.restartBtn.addEventListener("click", resetMatch);
