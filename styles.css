@@ -142,8 +142,67 @@ meter {
 }
 
 .duel-hud.hidden,
+.fight-vitals.hidden,
 .round-banner.hidden {
   display: none;
+}
+
+.fight-vitals {
+  position: absolute;
+  top: 158px;
+  left: 50%;
+  z-index: 4;
+  width: clamp(360px, calc(100vw - 540px), 620px);
+  transform: translateX(-50%);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.fighter-vital {
+  display: grid;
+  grid-template-columns: auto minmax(80px, 1fr) 34px;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  height: 34px;
+  padding: 0 9px;
+  border: 1px solid rgba(255, 255, 255, .2);
+  border-radius: 6px;
+  background: rgba(6, 9, 14, .88);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .32);
+  color: #f4f7fa;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.fighter-vital meter {
+  height: 12px;
+}
+
+.player-vital {
+  border-color: rgba(95, 208, 255, .42);
+}
+
+.player-vital meter {
+  accent-color: #4bc2ee;
+}
+
+.rival-vital {
+  grid-template-columns: 34px minmax(80px, 1fr) auto;
+  border-color: rgba(255, 93, 99, .42);
+}
+
+.rival-vital meter {
+  accent-color: #ff5d63;
+}
+
+.rival-vital span {
+  max-width: 74px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .duel-side,
@@ -557,6 +616,12 @@ meter {
     top: auto;
     bottom: 262px;
   }
+
+  .fight-vitals {
+    top: auto;
+    bottom: 220px;
+    width: min(620px, calc(100vw - 28px));
+  }
 }
 
 @media (max-width: 760px) {
@@ -596,6 +661,22 @@ meter {
   .duel-hud {
     bottom: 278px;
     grid-template-columns: 88px 80px 88px;
+  }
+
+  .fight-vitals {
+    bottom: 238px;
+    width: calc(100vw - 16px);
+    gap: 6px;
+  }
+
+  .fighter-vital {
+    grid-template-columns: auto minmax(48px, 1fr) 28px;
+    padding: 0 6px;
+    font-size: 10px;
+  }
+
+  .rival-vital {
+    grid-template-columns: 28px minmax(48px, 1fr) auto;
   }
 
   .bars {

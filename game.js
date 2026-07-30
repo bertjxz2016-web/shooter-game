@@ -40,6 +40,12 @@ const ui = {
   rivalRoundScore: document.getElementById("rivalRoundScore"),
   roundLabel: document.getElementById("roundLabel"),
   roundBanner: document.getElementById("roundBanner"),
+  fightVitals: document.getElementById("fightVitals"),
+  playerFightMeter: document.getElementById("playerFightMeter"),
+  playerFightText: document.getElementById("playerFightText"),
+  rivalFightMeter: document.getElementById("rivalFightMeter"),
+  rivalFightText: document.getElementById("rivalFightText"),
+  rivalFightName: document.getElementById("rivalFightName"),
   difficultyButtons: [...document.querySelectorAll("[data-difficulty]")]
 };
 
@@ -431,6 +437,13 @@ const MOVE_EXHAUSTION_RATE = 2;
 const SPRINT_EXHAUSTION_RATE = 3;
 const REST_EXHAUSTION_RATE = 2;
 const CHARACTER_WORLD_HEIGHT = 118;
+const DASH_DISTANCE = 155;
+const DASH_STAMINA_COST = 12;
+const DASH_COOLDOWN = 2.1;
+const GUARD_EXHAUSTION_RATE = 8;
+const MELEE_RANGE = 135;
+const MELEE_DAMAGE = 16;
+const MELEE_COOLDOWN = .48;
 const TEAM_COLORS = {
   Blue: "#2f82b7",
   Red: "#9c3d43",
@@ -471,9 +484,16 @@ const state = {
   duelPhase: "menu",
   phaseTimer: 0,
   roundMessage: "",
+  dashCooldown: 0,
+  dashFlash: 0,
+  meleeCooldown: 0,
+  meleeSwing: 0,
+  guardFlash: 0,
+  comboHits: 0,
+  comboTimer: 0,
   playerTeam: "Blue",
   playerRespawnTimer: 0,
-  player: { x: 0, y: 0, angle: 0, pitch: 0, health: 150, stamina: 150, exhausted: false, z: 0, vz: 0, reload: 0, shootCd: 0, trapped: 0, alive: true, team: "Blue" },
+  player: { x: 0, y: 0, angle: 0, pitch: 0, health: 150, stamina: 150, exhausted: false, z: 0, vz: 0, reload: 0, shootCd: 0, trapped: 0, guarding: false, alive: true, team: "Blue" },
   weaponRank: 1,
   armorRank: 1,
   ammo: 1,
@@ -600,6 +620,10 @@ function modeEnemyCount() {
 
 function isRivalDuel() {
   return state.mode.includes("Rival Duel");
+}
+
+function isFightMode() {
+  return isRivalDuel() || state.mode.includes("1v1");
 }
 
 function isTeamBattle() {
@@ -1207,6 +1231,7 @@ function spawnEnemies(size) {
       shootCd: rand(.2, 1.6) * botDifficulty.fireDelay,
       tacticCd: rand(.3, 1.1),
       strafeDir: Math.random() < .5 ? -1 : 1,
+      guardTimer: 0,
       targetCd: rand(0, .8),
       targetId: null,
       supplyCd: 0,
@@ -1232,8 +1257,15 @@ function resetCombatants(regenerateArena = true) {
   state.currentBuildingId = null;
   state.buildingReturn = null;
   state.buildingCooldown = 0;
+  state.dashCooldown = 0;
+  state.dashFlash = 0;
+  state.meleeCooldown = 0;
+  state.meleeSwing = 0;
+  state.guardFlash = 0;
+  state.comboHits = 0;
+  state.comboTimer = 0;
   state.playerRespawnTimer = 0;
-  state.player = { x: 0, y: 0, angle: 0, pitch: 0, health: 150, stamina: 150, exhausted: false, z: 0, vz: 0, reload: 0, shootCd: 0, trapped: 0, alive: true, team: state.playerTeam };
+  state.player = { x: 0, y: 0, angle: 0, pitch: 0, health: 150, stamina: 150, exhausted: false, z: 0, vz: 0, reload: 0, shootCd: 0, trapped: 0, guarding: false, alive: true, team: state.playerTeam };
   state.inventory = createStarterInventory();
   if (state.armorRank >= 16) state.player.health = 190;
   state.ammo = weapon().magazine;
@@ -1297,6 +1329,15 @@ function startDuelRound(regenerateArena = false) {
   addChat(`Round ${state.roundNumber}: you versus ${state.enemies[0].id}.`);
 }
 
+function startSingleFight() {
+  resetCombatants(true);
+  state.running = false;
+  state.duelPhase = "singleCountdown";
+  state.phaseTimer = 3.2;
+  state.roundMessage = "";
+  addChat(`You versus ${state.enemies[0].id}.`);
+}
+
 function modeObjectiveText() {
   if (isRivalDuel()) return "Win 5 rounds before your rival.";
   if (state.mode.includes("1v1")) return "Eliminate the rival before they eliminate you.";
@@ -1317,6 +1358,9 @@ function resetMatch() {
   if (isRivalDuel()) {
     startDuelRound(true);
     addChat(`${state.mode} started on ${state.map.name} at ${state.difficulty} difficulty. First to 5 rounds wins.`);
+  } else if (state.mode.includes("1v1")) {
+    startSingleFight();
+    addChat(`${state.mode} started on ${state.map.name} at ${state.difficulty} difficulty.`);
   } else {
     state.duelPhase = "off";
     state.running = true;
@@ -1329,6 +1373,7 @@ function resetMatch() {
 function finishDuelRound(playerWon, reason) {
   if (!isRivalDuel() || state.duelPhase !== "playing") return;
   state.running = false;
+  state.player.guarding = false;
   state.duelPhase = "roundEnd";
   state.phaseTimer = 2.25;
   if (playerWon) state.playerRounds += 1;
@@ -1365,6 +1410,7 @@ function respawnEnemy(enemy) {
   enemy.stamina = 150;
   enemy.exhausted = false;
   enemy.trapped = 0;
+  enemy.guardTimer = 0;
   enemy.alive = true;
   enemy.respawnTimer = 0;
   enemy.targetId = null;
@@ -1389,6 +1435,7 @@ function respawnPlayer() {
   state.player.trapped = 0;
   state.player.reload = 0;
   state.player.shootCd = 0;
+  state.player.guarding = false;
   state.player.alive = true;
   state.playerRespawnTimer = 0;
   state.ammo = weapon().magazine;
@@ -1435,6 +1482,7 @@ function damageBed(bed, amount, attacker) {
 }
 
 function handlePlayerDefeat(reason) {
+  state.player.guarding = false;
   if (isBedwars() && state.player.alive && teamBed(state.playerTeam)?.alive) {
     if (state.insideBuilding) {
       state.buildingCooldown = 0;
@@ -1473,6 +1521,7 @@ function handleAllEnemiesDefeated(reason = "Rival eliminated") {
 
 function endMatch(won, reason) {
   state.running = false;
+  state.player.guarding = false;
   state.won = won;
   if (isRivalDuel()) state.duelPhase = "matchEnd";
   if (won) {
@@ -1497,21 +1546,41 @@ function endMatch(won, reason) {
 
 function takeDamage(amount, source) {
   if (!state.running || !playerIsPresent()) return;
-  const reduced = amount * (1 - armor().protection);
-  state.player.health = clamp(state.player.health - reduced, 0, 220);
   const attacker = state.enemies.find(enemy => enemy.id === source);
+  const incomingAngle = attacker
+    ? Math.atan2(attacker.y - state.player.y, attacker.x - state.player.x)
+    : state.player.angle + Math.PI;
+  const guarded = Boolean(
+    attacker
+    && state.player.guarding
+    && Math.abs(angleDiff(incomingAngle, state.player.angle)) < 1.2
+  );
+  const reduced = amount * (1 - armor().protection) * (guarded ? .3 : 1);
+  state.player.health = clamp(state.player.health - reduced, 0, 220);
+  if (guarded) {
+    state.player.stamina = clamp(state.player.stamina - Math.max(3, amount * .28), 0, 150);
+    state.guardFlash = .2;
+    spawnFloatingText(state.player.x, state.player.y, "BLOCK", "#74d7ff", .7, 62);
+  } else {
+    state.comboHits = 0;
+    state.comboTimer = 0;
+  }
   if (attacker) {
-    state.damageArc = { life: .48, angle: Math.atan2(attacker.y - state.player.y, attacker.x - state.player.x) };
+    state.damageArc = { life: .48, angle: incomingAngle };
   } else {
     state.damageArc = { life: .35, angle: state.player.angle + Math.PI };
   }
-  state.shake = Math.max(state.shake, .34);
+  state.shake = Math.max(state.shake, guarded ? .13 : .34);
   playImpactSound(true);
   const warningPoint = shotEndpoint(state.player, state.damageArc.angle, 170);
   spawnFloatingText(warningPoint.x + rand(-20, 20), warningPoint.y + rand(-20, 20), `-${reduced.toFixed(0)}`, "#ff6b6b", 1.15, 56);
   ui.hitFlash.classList.add("active");
   setTimeout(() => ui.hitFlash.classList.remove("active"), 130);
-  if (source) addChat(`${source} hit you for ${reduced.toFixed(0)} XP.`);
+  if (source) {
+    addChat(guarded
+      ? `You guarded ${source}'s attack and took ${reduced.toFixed(0)} XP.`
+      : `${source} hit you for ${reduced.toFixed(0)} XP.`);
+  }
   if (state.player.health <= 0) handlePlayerDefeat(source ? `${source} eliminated you.` : "You were eliminated.");
 }
 
@@ -1850,6 +1919,146 @@ function useSlot(index) {
   renderInventory();
 }
 
+function registerComboHit() {
+  state.comboHits = state.comboTimer > 0 ? state.comboHits + 1 : 1;
+  state.comboTimer = 1.35;
+}
+
+function botIsGuardingAgainst(enemy, attacker) {
+  if (enemy.guardTimer <= 0) return false;
+  const incomingAngle = Math.atan2(attacker.y - enemy.y, attacker.x - enemy.x);
+  return Math.abs(angleDiff(incomingAngle, enemy.angle)) < 1.25;
+}
+
+function resolveCombatPosition(entity, nextX, nextY, radius) {
+  if (state.insideBuilding) {
+    return resolveInteriorPosition(entity.x, entity.y, nextX, nextY, radius);
+  }
+  const size = arenaSize();
+  return {
+    x: clamp(nextX, -size / 2 + radius + 16, size / 2 - radius - 16),
+    y: clamp(nextY, -size / 2 + radius + 16, size / 2 - radius - 16)
+  };
+}
+
+function playerDash() {
+  const p = state.player;
+  if (!state.running || !playerIsPresent() || p.exhausted || p.trapped > 0 || p.guarding || keys.has("c")) return false;
+  if (state.dashCooldown > 0 || p.stamina < DASH_STAMINA_COST) return false;
+
+  const forward = keys.has("w") || keys.has("arrowup") ? 1 : 0;
+  const back = keys.has("s") || keys.has("arrowdown") ? 1 : 0;
+  const left = keys.has("a") || keys.has("arrowleft") ? 1 : 0;
+  const right = keys.has("d") || keys.has("arrowright") ? 1 : 0;
+  let directionX = Math.cos(p.angle) * (forward - back)
+    + Math.cos(p.angle + Math.PI / 2) * (right - left);
+  let directionY = Math.sin(p.angle) * (forward - back)
+    + Math.sin(p.angle + Math.PI / 2) * (right - left);
+  const directionLength = Math.hypot(directionX, directionY);
+  if (directionLength < .1) {
+    directionX = Math.cos(p.angle);
+    directionY = Math.sin(p.angle);
+  } else {
+    directionX /= directionLength;
+    directionY /= directionLength;
+  }
+
+  const origin = { x: p.x, y: p.y };
+  const resolved = resolveCombatPosition(
+    p,
+    p.x + directionX * DASH_DISTANCE,
+    p.y + directionY * DASH_DISTANCE,
+    18
+  );
+  p.x = resolved.x;
+  p.y = resolved.y;
+  p.stamina = clamp(p.stamina - DASH_STAMINA_COST, 0, 150);
+  state.dashCooldown = DASH_COOLDOWN;
+  state.dashFlash = .24;
+  state.shake = Math.max(state.shake, .12);
+  spawnFloatingText(origin.x, origin.y, "DASH", "#74d7ff", .42, 34);
+  return true;
+}
+
+function findMeleeTarget() {
+  const p = state.player;
+  let best = null;
+  let bestDistance = Infinity;
+  for (const enemy of state.enemies) {
+    if (!enemyIsPresent(enemy) || !enemyIsOpponent(enemy)) continue;
+    const distance = dist(p, enemy);
+    if (distance > MELEE_RANGE || distance >= bestDistance) continue;
+    const angle = Math.atan2(enemy.y - p.y, enemy.x - p.x);
+    if (Math.abs(angleDiff(angle, p.angle)) > .72) continue;
+    best = enemy;
+    bestDistance = distance;
+  }
+  if (isBedwars() && !state.insideBuilding) {
+    for (const bed of state.beds) {
+      if (!bed.alive || bed.team === state.playerTeam) continue;
+      const distance = dist(p, bed);
+      if (distance > MELEE_RANGE || distance >= bestDistance) continue;
+      const angle = Math.atan2(bed.y - p.y, bed.x - p.x);
+      if (Math.abs(angleDiff(angle, p.angle)) > .8) continue;
+      best = bed;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
+function meleeAttack() {
+  const p = state.player;
+  if (!state.running || !playerIsPresent() || p.guarding || keys.has("c") || state.meleeCooldown > 0) return false;
+  state.meleeCooldown = MELEE_COOLDOWN;
+  state.meleeSwing = .3;
+  p.shootCd = Math.max(p.shootCd, .2);
+  state.shake = Math.max(state.shake, .1);
+  const target = findMeleeTarget();
+  if (!target) return true;
+
+  if (target.kind === "bed") {
+    damageBed(target, MELEE_DAMAGE * .8, "You");
+    spawnFloatingText(target.x, target.y, "BASH", "#ffd166", .65, 48);
+    return true;
+  }
+
+  const enemyArmor = armors[target.armor - 1] || armors[0];
+  const guarded = botIsGuardingAgainst(target, p);
+  const damage = MELEE_DAMAGE
+    * (1 - enemyArmor.protection * .35)
+    * (guarded ? .28 : 1);
+  target.health -= damage;
+  if (!guarded) registerComboHit();
+  state.hitMarker = .22;
+  spawnImpact(target.x, target.y, guarded ? "#74d7ff" : "#ffd27a", guarded ? 7 : 18);
+  spawnFloatingText(
+    target.x,
+    target.y,
+    guarded ? "BLOCK" : damage.toFixed(0),
+    guarded ? "#74d7ff" : "#ffe37a",
+    .75,
+    56
+  );
+  if (!guarded) {
+    const knockback = resolveCombatPosition(
+      target,
+      target.x + Math.cos(p.angle) * 46,
+      target.y + Math.sin(p.angle) * 46,
+      20
+    );
+    target.x = knockback.x;
+    target.y = knockback.y;
+    target.targetId = "player";
+    target.targetCd = 3;
+  }
+  if (target.health <= 0 && target.alive) {
+    spawnFloatingText(target.x, target.y, "K.O.", "#67e08a", 1.2, 84);
+    eliminateEnemy(target, `${target.id} was knocked out. +2 diamonds.`, true);
+  }
+  return true;
+}
+
 function reload() {
   if (!state.running || !playerIsPresent() || state.player.reload > 0 || state.ammo === weapon().magazine) return;
   state.player.reload = 1.1;
@@ -1857,7 +2066,7 @@ function reload() {
 }
 
 function shoot() {
-  if (!state.running || !playerIsPresent() || state.player.shootCd > 0 || state.player.reload > 0) return;
+  if (!state.running || !playerIsPresent() || state.player.guarding || keys.has("c") || state.player.shootCd > 0 || state.player.reload > 0) return;
   const w = weapon();
   if (state.ammo <= 0) {
     reload();
@@ -1883,14 +2092,16 @@ function shoot() {
   state.shake = Math.max(state.shake, .11);
   if (hit) {
     const hitBed = hit.kind === "bed";
+    const guarded = !hitBed && botIsGuardingAgainst(hit, state.player);
     const enemyArmor = hitBed ? armors[0] : armors[hit.armor - 1] || armors[0];
     const damage = hitBed
       ? w.damage * 5.5
-      : w.damage * 4.5 * (1 - enemyArmor.protection * .55);
+      : w.damage * 4.5 * (1 - enemyArmor.protection * .55) * (guarded ? .32 : 1);
     if (hitBed) {
       damageBed(hit, damage, "You");
     } else {
       hit.health -= damage;
+      if (!guarded) registerComboHit();
       if (hit.health > 0) {
         hit.targetId = "player";
         hit.targetCd = 4;
@@ -1900,8 +2111,15 @@ function shoot() {
     }
     state.hitMarker = .22;
     playImpactSound(false);
-    spawnImpact(hit.x, hit.y, "#ffd27a", 19);
-    spawnFloatingText(hit.x, hit.y, damage.toFixed(0), "#ffe37a", .9, 58);
+    spawnImpact(hit.x, hit.y, guarded ? "#74d7ff" : "#ffd27a", guarded ? 7 : 19);
+    spawnFloatingText(
+      hit.x,
+      hit.y,
+      guarded ? "BLOCK" : damage.toFixed(0),
+      guarded ? "#74d7ff" : "#ffe37a",
+      .9,
+      58
+    );
     addChat(`You hit ${hitBed ? `${hit.team} bed` : hit.id} with ${w.name} for ${damage.toFixed(1)} XP.`);
     if (!hitBed && hit.health <= 0 && hit.alive) {
       spawnImpact(hit.x, hit.y, "#67e08a", 30);
@@ -2029,6 +2247,7 @@ function enemyShoot(enemy, target, dt) {
   if (target !== state.player && !targetIsBed && !enemyIsPresent(target)) return;
   if (!areCombatantsHostile(enemy, target)) return;
   enemy.shootCd -= dt;
+  if (enemy.guardTimer > 0) return;
   const botDifficulty = difficulty();
   const targetIsPlayer = target === state.player;
   const d = dist(enemy, target);
@@ -2116,9 +2335,12 @@ function updatePlayer(dt) {
   const left = keys.has("a") || keys.has("arrowleft") ? 1 : 0;
   const right = keys.has("d") || keys.has("arrowright") ? 1 : 0;
   const wantsToMove = Boolean(forward || back || left || right);
+  p.guarding = keys.has("c") && !p.exhausted && p.trapped <= 0 && p.stamina > 0;
   let moving = wantsToMove && !p.exhausted && p.trapped <= 0;
-  let sprinting = keys.has("shift") && moving && p.stamina > 0;
-  if (moving) {
+  let sprinting = keys.has("shift") && moving && !p.guarding && p.stamina > 0;
+  if (p.guarding) {
+    p.stamina = clamp(p.stamina - GUARD_EXHAUSTION_RATE * dt, 0, 150);
+  } else if (moving) {
     const drainRate = sprinting ? SPRINT_EXHAUSTION_RATE : MOVE_EXHAUSTION_RATE;
     p.stamina = clamp(p.stamina - drainRate * dt, 0, 150);
   } else {
@@ -2127,14 +2349,15 @@ function updatePlayer(dt) {
   updateExhaustionState(p, true);
 
   if (p.trapped > 0) {
+    p.guarding = false;
     p.trapped -= dt;
     return;
   }
 
   moving = wantsToMove && !p.exhausted;
-  sprinting = keys.has("shift") && moving && p.stamina > 0;
+  sprinting = keys.has("shift") && moving && !p.guarding && p.stamina > 0;
   const tired = p.exhausted ? 0 : p.stamina < 25 ? .52 : 1;
-  const speed = 185 * armor().speed * tired * (sprinting ? 1.38 : 1);
+  const speed = 185 * armor().speed * tired * (sprinting ? 1.38 : 1) * (p.guarding ? .46 : 1);
   let vx = 0;
   let vy = 0;
 
@@ -2175,7 +2398,7 @@ function updatePlayer(dt) {
     if (state.armorRank === 11 && p.health < 150) p.health = clamp(p.health + 1.5 * dt, 0, 150);
   }
 
-  if (!p.exhausted && keys.has(" ") && p.z === 0) {
+  if (!p.exhausted && !p.guarding && keys.has(" ") && p.z === 0) {
     p.vz = state.armorRank === 15 ? 390 : 285;
   }
   p.vz -= 760 * dt;
@@ -2278,6 +2501,7 @@ function updateEnemies(dt) {
     if (!e.alive) continue;
     if (updateEnemyBuildingTransition(e, dt)) continue;
     if (!updateEnemySupplies(e, dt)) continue;
+    e.guardTimer = Math.max(0, e.guardTimer - dt);
     if (e.trapped > 0) {
       e.trapped -= dt;
       continue;
@@ -2291,6 +2515,9 @@ function updateEnemies(dt) {
     e.tacticCd -= dt;
     if (e.tacticCd <= 0) {
       if (Math.random() < .42) e.strafeDir *= -1;
+      if (dist(e, target) < 210 && Math.random() < .28 * difficulty().accuracy) {
+        e.guardTimer = rand(.32, .72);
+      }
       e.tacticCd = rand(.65, 1.45);
     }
 
@@ -2325,9 +2552,10 @@ function updateEnemies(dt) {
 
     const movementLength = Math.hypot(moveX, moveY) || 1;
     const tired = e.exhausted ? 0 : e.stamina < 25 ? .52 : 1;
+    const guarding = e.guardTimer > 0 ? .42 : 1;
     const caution = healthRatio < .3 ? 1.16 : 1;
-    const enemyNextX = e.x + moveX / movementLength * e.speed * tired * caution * dt;
-    const enemyNextY = e.y + moveY / movementLength * e.speed * tired * caution * dt;
+    const enemyNextX = e.x + moveX / movementLength * e.speed * tired * guarding * caution * dt;
+    const enemyNextY = e.y + moveY / movementLength * e.speed * tired * guarding * caution * dt;
     if (state.insideBuilding) {
       const resolved = resolveInteriorPosition(e.x, e.y, enemyNextX, enemyNextY, 20);
       e.x = resolved.x;
@@ -2419,6 +2647,20 @@ function updateTrapsByTime() {
 }
 
 function update(dt) {
+  if (state.duelPhase === "singleCountdown") {
+    state.phaseTimer -= dt;
+    updateVisualEffects(dt);
+    if (state.phaseTimer <= 0) {
+      state.duelPhase = "singleFight";
+      state.running = true;
+      state.phaseTimer = .65;
+      state.roundMessage = "FIGHT!";
+    }
+    return;
+  }
+  if (state.duelPhase === "singleFight" && state.phaseTimer > 0) {
+    state.phaseTimer = Math.max(0, state.phaseTimer - dt);
+  }
   if (isRivalDuel()) {
     if (state.duelPhase === "countdown") {
       state.phaseTimer -= dt;
@@ -2476,6 +2718,13 @@ function update(dt) {
 }
 
 function updateVisualEffects(dt) {
+  state.dashCooldown = Math.max(0, state.dashCooldown - dt);
+  state.dashFlash = Math.max(0, state.dashFlash - dt);
+  state.meleeCooldown = Math.max(0, state.meleeCooldown - dt);
+  state.meleeSwing = Math.max(0, state.meleeSwing - dt);
+  state.guardFlash = Math.max(0, state.guardFlash - dt);
+  state.comboTimer = Math.max(0, state.comboTimer - dt);
+  if (state.comboTimer <= 0) state.comboHits = 0;
   state.tracers = state.tracers.map(t => ({ ...t, life: t.life - dt })).filter(t => t.life > 0);
   state.particles = state.particles
     .map(p => ({
@@ -4865,6 +5114,49 @@ function drawCombatOverlay(width, height) {
     ctx.stroke();
     ctx.restore();
   }
+
+  if (state.dashFlash > 0) {
+    const alpha = clamp(state.dashFlash / .24, 0, 1);
+    ctx.save();
+    ctx.strokeStyle = `rgba(116, 215, 255, ${alpha * .72})`;
+    ctx.lineWidth = 2;
+    for (let line = 0; line < 12; line++) {
+      const side = line % 2 === 0 ? -1 : 1;
+      const y = height * (.18 + (line % 6) * .13);
+      const outerX = side < 0 ? 0 : width;
+      const innerX = width / 2 + side * width * (.25 + (line % 3) * .04);
+      ctx.beginPath();
+      ctx.moveTo(outerX, y);
+      ctx.lineTo(innerX, y + (line % 2 ? 12 : -12));
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  if (state.player.guarding || state.guardFlash > 0) {
+    const alpha = state.player.guarding ? .48 : clamp(state.guardFlash / .2, 0, 1) * .7;
+    ctx.save();
+    ctx.strokeStyle = `rgba(116, 215, 255, ${alpha})`;
+    ctx.lineWidth = 7;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.arc(width / 2, height / 2, Math.min(width, height) * .18, Math.PI * 1.12, Math.PI * 1.88);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  if (state.comboHits >= 2 && state.comboTimer > 0) {
+    const alpha = clamp(state.comboTimer / .35, 0, 1);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#ffe37a";
+    ctx.font = "900 30px sans-serif";
+    ctx.shadowColor = "rgba(0,0,0,.75)";
+    ctx.shadowBlur = 12;
+    ctx.fillText(`${state.comboHits} HIT COMBO`, width * .72, height * .42);
+    ctx.restore();
+  }
 }
 
 function drawProp(x, y, scale, prop) {
@@ -5129,6 +5421,13 @@ function drawEnemy(x, y, scale, enemy) {
   ctx.fillRect(x - w, y - h - 5, w * 2, 4);
   ctx.fillStyle = enemy.stamina < 25 ? "#ff9a62" : "#74d7ff";
   ctx.fillRect(x - w + 1, y - h - 4, (w * 2 - 2) * clamp(enemy.stamina / 150, 0, 1), 2);
+  if (enemy.guardTimer > 0) {
+    ctx.strokeStyle = "rgba(116, 215, 255, .72)";
+    ctx.lineWidth = Math.max(2, w * .08);
+    ctx.beginPath();
+    ctx.arc(x, y - h * .54, w * .9, Math.PI * 1.08, Math.PI * 1.92);
+    ctx.stroke();
+  }
   ctx.restore();
 }
 
@@ -5136,11 +5435,14 @@ function drawWeapon(width, height) {
   const w = weapon();
   const moving = keys.has("w") || keys.has("a") || keys.has("s") || keys.has("d");
   const bob = moving && state.running ? Math.sin(state.time * 9) : 0;
-  const x = width * .64 + state.recoil * 26 + bob * 3;
-  const y = height * .82 + state.recoil * 38 + Math.abs(bob) * 3;
+  const swingProgress = state.meleeSwing > 0 ? 1 - state.meleeSwing / .3 : 0;
+  const meleePose = state.meleeSwing > 0 ? Math.sin(swingProgress * Math.PI) : 0;
+  const guardPose = state.player.guarding ? 1 : 0;
+  const x = width * .64 + state.recoil * 26 + bob * 3 - meleePose * 112 - guardPose * 72;
+  const y = height * .82 + state.recoil * 38 + Math.abs(bob) * 3 + meleePose * 42 - guardPose * 48;
   ctx.save();
   ctx.translate(x, y);
-  ctx.rotate(-.1 - state.recoil * .09 + bob * .004);
+  ctx.rotate(-.1 - state.recoil * .09 + bob * .004 + meleePose * .76 + guardPose * .3);
   ctx.fillStyle = "rgba(0,0,0,.42)";
   ctx.beginPath();
   ctx.moveTo(-82, -3);
@@ -5257,6 +5559,20 @@ function updateUi() {
     : `${trapSummary}${bedSummary}`;
   ui.loadoutText.textContent = `${weapon().name} + ${armor().name}`;
 
+  const fightRival = state.enemies.find(enemy => enemyIsOpponent(enemy)) || state.enemies[0];
+  if (isFightMode() && fightRival) {
+    ui.fightVitals.classList.remove("hidden");
+    ui.playerFightMeter.max = state.armorRank >= 16 ? 190 : 150;
+    ui.playerFightMeter.value = p.health;
+    ui.playerFightText.textContent = Math.ceil(p.health);
+    ui.rivalFightMeter.max = fightRival.maxHealth;
+    ui.rivalFightMeter.value = Math.max(0, fightRival.health);
+    ui.rivalFightText.textContent = Math.max(0, Math.ceil(fightRival.health));
+    ui.rivalFightName.textContent = fightRival.id.toUpperCase();
+  } else {
+    ui.fightVitals.classList.add("hidden");
+  }
+
   if (isRivalDuel()) {
     ui.duelHud.classList.remove("hidden");
     ui.playerRoundScore.textContent = state.playerRounds;
@@ -5275,7 +5591,19 @@ function updateUi() {
     ui.rewardText.textContent = "Win 5 rounds before your rival.";
   } else {
     ui.duelHud.classList.add("hidden");
-    ui.roundBanner.classList.add("hidden");
+    let fightBanner = "";
+    if (state.mode.includes("1v1")) {
+      if (state.duelPhase === "singleCountdown") {
+        fightBanner = Math.min(3, Math.max(1, Math.ceil(state.phaseTimer)));
+      }
+      if (state.duelPhase === "singleFight" && state.phaseTimer > 0) fightBanner = state.roundMessage;
+    }
+    if (fightBanner) {
+      ui.roundBanner.textContent = fightBanner;
+      ui.roundBanner.classList.remove("hidden");
+    } else {
+      ui.roundBanner.classList.add("hidden");
+    }
     ui.rewardText.textContent = modeObjectiveText();
   }
 }
@@ -5408,6 +5736,8 @@ window.addEventListener("keydown", event => {
   if (key >= "1" && key <= "9") useSlot(Number(key) - 1);
   if (key === "r") reload();
   if (key === "f") shoot();
+  if (key === "q" && !event.repeat) playerDash();
+  if (key === "v" && !event.repeat) meleeAttack();
   if (key === "e" && !event.repeat) toggleBuilding();
   if ([" ", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(key)) event.preventDefault();
 });

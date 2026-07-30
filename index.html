@@ -37,6 +37,18 @@
         <span id="roundLabel" class="round-label">ROUND 1</span>
         <span class="duel-side rival-side"><b id="rivalRoundScore">0</b> RIVAL</span>
       </div>
+      <div id="fightVitals" class="fight-vitals hidden">
+        <div class="fighter-vital player-vital">
+          <span>YOU</span>
+          <meter id="playerFightMeter" min="0" max="150" value="150"></meter>
+          <b id="playerFightText">150</b>
+        </div>
+        <div class="fighter-vital rival-vital">
+          <b id="rivalFightText">150</b>
+          <meter id="rivalFightMeter" min="0" max="150" value="150"></meter>
+          <span id="rivalFightName">RIVAL</span>
+        </div>
+      </div>
       <div id="roundBanner" class="round-banner hidden"></div>
 
       <div class="center-reticle" aria-hidden="true"></div>
@@ -69,7 +81,7 @@
 
         <div class="panel-block instructions">
           <h2>Controls</h2>
-          <p>WASD or arrows move, Shift sprints, mouse looks, Space jumps, R reloads, E enters buildings, mouse click or F shoots.</p>
+          <p>WASD or arrows move, Shift sprints, mouse looks, Space jumps, Q dashes, C guards, V strikes, R reloads, E enters buildings, mouse click or F shoots.</p>
           <p>1-9 uses inventory slots. Rest by standing still. Drink water to restore 60 exhaustion.</p>
         </div>
       </aside>
@@ -137,6 +149,6 @@
       </section>
     </section>
   </main>
-  <script src="game.js?v=all-modes-1"></script>
+  <script src="game.js?v=fighter-combat-1"></script>
 </body>
 </html>
