@@ -134,48 +134,123 @@ const buildingThemes = {
 
 const buildingNames = {
   "Warehouse": [
-    "Operations room", "Loading office", "Tool room", "Storage annex",
-    "Dispatch office", "Generator room", "Shipping bay", "Maintenance shop"
+    "North loading hangar", "Dispatch office", "Machine workshop", "Tool shed",
+    "Vehicle garage", "Fire-watch tower", "Pallet warehouse", "Storm shelter",
+    "South loading hangar", "Freight office", "Generator workshop", "Parts shed",
+    "Forklift garage", "Water tower", "Cold-storage warehouse", "Security bunker"
   ],
   "Forest": [
-    "Ranger cabin", "Hunting lodge", "Supply hut", "Fire lookout",
-    "Trail shelter", "Field station", "Wood store", "Creek cabin"
+    "Ranger cabin", "Hunting lodge", "Maintenance shed", "Fire lookout",
+    "Trail shelter", "Field research tent", "Equipment barn", "Creek cabin",
+    "Trapper cabin", "Visitor lodge", "Wood shed", "Observation tower",
+    "Emergency tent", "Forestry tent", "Timber barn", "Lakeside cabin"
   ],
   "Small city block": [
-    "Corner store", "Apartment lobby", "Repair shop", "Cafe",
-    "Pharmacy", "Parking office", "Market", "Workshop"
+    "Corner grocery", "Brick apartments", "Auto repair garage", "Corner cafe",
+    "Bus-stop kiosk", "Furniture warehouse", "Walk-in clinic", "Bicycle workshop",
+    "Pharmacy", "Residential apartments", "Parking garage", "Bakery",
+    "News kiosk", "Delivery depot", "Dental clinic", "Hardware workshop"
   ],
   "Space station": [
-    "Habitat module", "Research pod", "Cargo airlock", "Command room",
-    "Med bay", "Reactor control", "Observatory", "Flight deck"
+    "Crew habitat module", "Science pod", "Cargo airlock", "Command module",
+    "Observation dome", "Radiation shelter", "Communications mast", "Shuttle hangar",
+    "Life-support module", "Medical pod", "Service airlock", "Navigation module",
+    "Hydroponics dome", "Emergency bunker", "Sensor mast", "Rover hangar"
   ],
   "Desert military base": [
-    "Field bunker", "Radio post", "Supply depot", "Barracks",
-    "Vehicle bay", "Watch post", "Mess hall", "Armory"
+    "Forward bunker", "Radio watchtower", "Supply depot", "Troop barracks",
+    "Vehicle hangar", "Perimeter tower", "Field hospital tent", "Ammunition bunker",
+    "Command bunker", "Water tower", "Fuel depot", "Mess barracks",
+    "Aircraft hangar", "Gate tower", "Operations tent", "Emergency bunker"
   ],
   "Abandoned village": [
-    "Stone house", "Old chapel", "Blacksmith shop", "Farmhouse",
-    "Tavern", "Schoolhouse", "Stable", "Mill"
+    "Stone cottage", "Old chapel", "Blacksmith shop", "Dairy barn",
+    "Village tavern", "Schoolhouse", "Horse stable", "Grain mill",
+    "Weaver cottage", "Bell chapel", "Carpenter shop", "Hay barn",
+    "Roadside inn", "Village hall", "Cart stable", "Water mill"
   ],
   "Mall": [
-    "Security office", "Arcade", "Back-room store", "Food court shop",
-    "Cinema office", "Sports shop", "Bookstore", "Service room"
+    "Security office", "Video arcade", "Clothing store", "Coffee kiosk",
+    "Cinema entrance", "Sports store", "Information kiosk", "Maintenance room",
+    "Electronics store", "Family arcade", "Bookstore", "Snack kiosk",
+    "Second cinema lobby", "Pharmacy", "Customer service kiosk", "Loading service room"
   ],
   "High-rise office": [
-    "Lobby suite", "Conference room", "Executive office", "Server room",
-    "Break room", "Archive", "Studio", "Finance office"
+    "Main lobby", "Open-plan office", "North tower", "Utility service room",
+    "Broadcast studio", "Records archive", "Parking garage", "East annex",
+    "Reception lobby", "Executive office", "South tower", "Electrical service room",
+    "Design studio", "Document archive", "Underground garage", "Conference annex"
   ]
 };
 
 const structureTypesByMap = {
-  "Warehouse": ["hangar", "office", "workshop", "shed", "garage", "tower", "warehouse", "bunker"],
-  "Forest": ["cabin", "lodge", "shed", "tower", "tent", "tent", "barn", "cabin"],
-  "Small city block": ["storefront", "apartment", "garage", "storefront", "kiosk", "warehouse", "clinic", "workshop"],
-  "Space station": ["module", "pod", "airlock", "module", "dome", "bunker", "tower", "hangar"],
-  "Desert military base": ["bunker", "tower", "depot", "barracks", "hangar", "tower", "tent", "bunker"],
-  "Abandoned village": ["house", "chapel", "workshop", "barn", "tavern", "school", "stable", "mill"],
-  "Mall": ["storefront", "arcade", "storefront", "kiosk", "cinema", "storefront", "kiosk", "service"],
-  "High-rise office": ["lobby", "office", "tower", "service", "studio", "archive", "garage", "annex"]
+  "Warehouse": [
+    "hangar", "office", "workshop", "shed", "garage", "tower", "warehouse", "bunker",
+    "hangar", "office", "workshop", "shed", "garage", "tower", "warehouse", "bunker"
+  ],
+  "Forest": [
+    "cabin", "lodge", "shed", "tower", "tent", "tent", "barn", "cabin",
+    "cabin", "lodge", "shed", "tower", "tent", "tent", "barn", "cabin"
+  ],
+  "Small city block": [
+    "storefront", "apartment", "garage", "storefront", "kiosk", "warehouse", "clinic", "workshop",
+    "storefront", "apartment", "garage", "storefront", "kiosk", "warehouse", "clinic", "workshop"
+  ],
+  "Space station": [
+    "module", "pod", "airlock", "module", "dome", "bunker", "tower", "hangar",
+    "module", "pod", "airlock", "module", "dome", "bunker", "tower", "hangar"
+  ],
+  "Desert military base": [
+    "bunker", "tower", "depot", "barracks", "hangar", "tower", "tent", "bunker",
+    "bunker", "tower", "depot", "barracks", "hangar", "tower", "tent", "bunker"
+  ],
+  "Abandoned village": [
+    "house", "chapel", "workshop", "barn", "tavern", "school", "stable", "mill",
+    "house", "chapel", "workshop", "barn", "tavern", "school", "stable", "mill"
+  ],
+  "Mall": [
+    "service", "arcade", "storefront", "kiosk", "cinema", "storefront", "kiosk", "service",
+    "storefront", "arcade", "storefront", "kiosk", "cinema", "storefront", "kiosk", "service"
+  ],
+  "High-rise office": [
+    "lobby", "office", "highrise", "service", "studio", "archive", "garage", "annex",
+    "lobby", "office", "highrise", "service", "studio", "archive", "garage", "annex"
+  ]
+};
+
+const structureMaterialsByMap = {
+  "Warehouse": [
+    "corrugated", "concrete", "brick", "corrugated", "concrete", "steel", "corrugated", "concrete",
+    "corrugated", "concrete", "brick", "corrugated", "concrete", "steel", "corrugated", "concrete"
+  ],
+  "Forest": [
+    "timber", "timber", "timber", "timber", "canvas", "canvas", "timber", "timber",
+    "timber", "timber", "timber", "timber", "canvas", "canvas", "timber", "timber"
+  ],
+  "Small city block": [
+    "brick", "brick", "concrete", "brick", "steel", "brick", "stucco", "brick",
+    "brick", "brick", "concrete", "brick", "steel", "brick", "stucco", "brick"
+  ],
+  "Space station": [
+    "alloy", "alloy", "alloy", "alloy", "alloy", "concrete", "steel", "alloy",
+    "alloy", "alloy", "alloy", "alloy", "alloy", "concrete", "steel", "alloy"
+  ],
+  "Desert military base": [
+    "concrete", "steel", "concrete", "stucco", "corrugated", "steel", "canvas", "concrete",
+    "concrete", "steel", "concrete", "stucco", "corrugated", "steel", "canvas", "concrete"
+  ],
+  "Abandoned village": [
+    "stone", "stone", "timber", "timber", "stone", "stone", "timber", "stone",
+    "stone", "stone", "timber", "timber", "stone", "stone", "timber", "stone"
+  ],
+  "Mall": [
+    "panel", "panel", "glass", "steel", "panel", "glass", "steel", "panel",
+    "glass", "panel", "glass", "steel", "panel", "glass", "steel", "panel"
+  ],
+  "High-rise office": [
+    "glass", "glass", "glass", "concrete", "glass", "concrete", "concrete", "glass",
+    "glass", "glass", "glass", "concrete", "glass", "concrete", "concrete", "glass"
+  ]
 };
 
 const structureDimensions = {
@@ -194,7 +269,24 @@ const structureDimensions = {
   mill: [220, 190],
   cabin: [210, 155],
   lodge: [250, 175],
-  shed: [185, 130]
+  shed: [185, 130],
+  storefront: [235, 170],
+  apartment: [220, 245],
+  clinic: [245, 170],
+  workshop: [245, 165],
+  module: [265, 150],
+  airlock: [205, 145],
+  highrise: [215, 275],
+  office: [235, 185],
+  lobby: [275, 180],
+  cinema: [285, 190],
+  arcade: [245, 170],
+  service: [205, 145],
+  barracks: [285, 155],
+  depot: [270, 150],
+  annex: [255, 180],
+  archive: [230, 170],
+  studio: [250, 185]
 };
 
 const interiorFurnitureTypes = {
@@ -206,6 +298,45 @@ const interiorFurnitureTypes = {
   village: ["table", "chair", "bed", "shelf", "crate", "bench", "cabinet", "barrel", "table", "chair", "crate", "shelf"],
   mall: ["counter", "shelf", "bench", "table", "chair", "plant", "cabinet", "crate", "counter", "chair", "shelf", "plant"],
   office: ["desk", "chair", "cabinet", "plant", "desk", "chair", "shelf", "console", "bench", "plant", "locker", "table"]
+};
+
+const interiorFurnitureByStructure = {
+  hangar: ["crate", "locker", "barrel", "workbench", "crate", "rack", "radio", "bench", "toolbox", "barrel", "locker", "crate"],
+  office: ["desk", "chair", "cabinet", "plant", "desk", "chair", "bookshelf", "monitor", "bench", "plant", "cabinet", "table"],
+  workshop: ["workbench", "toolbox", "rack", "crate", "workbench", "chair", "locker", "barrel", "shelf", "radio", "crate", "bench"],
+  shed: ["shelf", "toolbox", "crate", "barrel", "workbench", "rack", "crate", "bench", "cabinet", "crate", "shelf", "barrel"],
+  garage: ["workbench", "toolbox", "locker", "barrel", "rack", "crate", "workbench", "bench", "radio", "barrel", "cabinet", "crate"],
+  tower: ["radio", "chair", "locker", "console", "bench", "crate", "cabinet", "table", "radio", "chair", "shelf", "crate"],
+  warehouse: ["rack", "crate", "crate", "forklift", "rack", "barrel", "locker", "crate", "workbench", "crate", "rack", "barrel"],
+  bunker: ["locker", "ammoRack", "radio", "crate", "cot", "locker", "table", "bench", "ammoRack", "barrel", "cabinet", "crate"],
+  cabin: ["table", "chair", "cot", "bookshelf", "stove", "chair", "cabinet", "bench", "crate", "table", "shelf", "barrel"],
+  lodge: ["table", "chair", "bed", "bookshelf", "stove", "chair", "cabinet", "bench", "plant", "table", "shelf", "crate"],
+  tent: ["cot", "crate", "radio", "table", "cot", "locker", "medical", "bench", "crate", "chair", "cabinet", "water"],
+  barn: ["crate", "barrel", "workbench", "rack", "crate", "bench", "shelf", "barrel", "feedBin", "crate", "toolbox", "rack"],
+  storefront: ["checkout", "shelf", "shelf", "display", "counter", "chair", "cabinet", "display", "shelf", "plant", "checkout", "shelf"],
+  apartment: ["table", "chair", "bed", "cabinet", "sofa", "chair", "bookshelf", "plant", "desk", "chair", "shelf", "table"],
+  kiosk: ["checkout", "shelf", "display", "counter", "chair", "cabinet", "shelf", "display", "checkout", "shelf", "crate", "chair"],
+  clinic: ["medical", "cabinet", "desk", "chair", "shelf", "medical", "bed", "bench", "plant", "desk", "locker", "table"],
+  module: ["console", "locker", "pod", "crate", "monitor", "bench", "locker", "console", "pod", "chair", "cabinet", "server"],
+  pod: ["medical", "console", "pod", "locker", "monitor", "bench", "cabinet", "console", "pod", "chair", "server", "table"],
+  airlock: ["locker", "locker", "console", "crate", "suitRack", "bench", "suitRack", "console", "crate", "chair", "cabinet", "server"],
+  dome: ["console", "plant", "monitor", "pod", "hydroponics", "bench", "hydroponics", "console", "plant", "chair", "server", "table"],
+  barracks: ["cot", "locker", "cot", "locker", "table", "crate", "cot", "bench", "radio", "ammoRack", "cabinet", "crate"],
+  depot: ["rack", "crate", "barrel", "crate", "rack", "locker", "workbench", "bench", "radio", "barrel", "cabinet", "crate"],
+  house: ["table", "chair", "bed", "bookshelf", "stove", "bench", "cabinet", "barrel", "table", "chair", "crate", "shelf"],
+  chapel: ["pew", "pew", "pew", "pew", "table", "bench", "bookshelf", "cabinet", "pew", "pew", "chair", "table"],
+  tavern: ["table", "chair", "counter", "barrel", "table", "chair", "cabinet", "bench", "barrel", "table", "chair", "shelf"],
+  school: ["desk", "chair", "bookshelf", "desk", "chair", "cabinet", "bench", "table", "bookshelf", "desk", "chair", "shelf"],
+  stable: ["feedBin", "barrel", "rack", "bench", "crate", "feedBin", "shelf", "barrel", "workbench", "crate", "toolbox", "rack"],
+  mill: ["grainSack", "barrel", "workbench", "gearbox", "grainSack", "bench", "shelf", "barrel", "gearbox", "crate", "toolbox", "rack"],
+  arcade: ["arcade", "arcade", "arcade", "bench", "arcade", "chair", "counter", "arcade", "arcade", "bench", "checkout", "arcade"],
+  cinema: ["cinemaSeat", "cinemaSeat", "cinemaSeat", "cinemaSeat", "counter", "bench", "cinemaSeat", "cinemaSeat", "display", "cinemaSeat", "cinemaSeat", "cabinet"],
+  service: ["workbench", "locker", "cabinet", "toolbox", "shelf", "chair", "radio", "bench", "crate", "barrel", "cabinet", "table"],
+  lobby: ["desk", "chair", "sofa", "plant", "sofa", "chair", "display", "bench", "plant", "table", "cabinet", "monitor"],
+  highrise: ["desk", "chair", "cabinet", "plant", "desk", "chair", "monitor", "sofa", "desk", "plant", "server", "table"],
+  studio: ["desk", "chair", "monitor", "camera", "console", "chair", "cabinet", "bench", "lightStand", "monitor", "locker", "table"],
+  archive: ["rack", "fileCabinet", "rack", "fileCabinet", "desk", "chair", "bookshelf", "bench", "rack", "fileCabinet", "locker", "table"],
+  annex: ["desk", "chair", "cabinet", "plant", "table", "chair", "bookshelf", "monitor", "bench", "plant", "locker", "table"]
 };
 
 const INTERIOR_BOUNDS = {
@@ -474,6 +605,7 @@ function mapBuildings() {
   const style = buildingThemes[state.map.name] || buildingThemes.Forest;
   const names = buildingNames[state.map.name] || buildingNames.Forest;
   const structureTypes = structureTypesByMap[state.map.name] || structureTypesByMap.Forest;
+  const materials = structureMaterialsByMap[state.map.name] || structureMaterialsByMap.Forest;
   const size = arenaSize();
   const positions = [
     [-size * .29, size * .28],
@@ -500,6 +632,7 @@ function mapBuildings() {
   return positions.map(([x, y], index) => {
     const baseName = names[index % names.length];
     const structureType = structureTypes[index % structureTypes.length];
+    const material = materials[index % materials.length];
     const dimensions = structureDimensions[structureType] || [220, 155];
     const width = Math.round(dimensions[0] * buildingScales[index]);
     const height = Math.round(dimensions[1] * buildingScales[index]);
@@ -509,7 +642,8 @@ function mapBuildings() {
       index,
       scene: (backgroundThemes[state.map.name] || backgroundThemes.Forest).scene,
       structureType,
-      name: index < names.length ? baseName : `${baseName} outpost`,
+      material,
+      name: baseName,
       x,
       y,
       width,
@@ -532,7 +666,9 @@ function activeBuilding() {
 }
 
 function interiorProps(building = activeBuilding()) {
-  const types = interiorFurnitureTypes[building.scene] || interiorFurnitureTypes.forest;
+  const types = interiorFurnitureByStructure[building.structureType]
+    || interiorFurnitureTypes[building.scene]
+    || interiorFurnitureTypes.forest;
   const positions = [
     [-166, -78], [166, -72], [-170, 18], [170, 22],
     [-166, 112], [166, 116], [-145, 178], [-55, 178],
@@ -542,7 +678,23 @@ function interiorProps(building = activeBuilding()) {
     shelf: [29, 105], locker: [27, 98], cabinet: [30, 86], console: [34, 68],
     desk: [42, 54], counter: [44, 64], table: [39, 50], chair: [21, 44],
     bed: [46, 38], pod: [42, 72], bench: [37, 36], plant: [24, 68],
-    crate: [29, 53], barrel: [23, 55], radio: [28, 74]
+    crate: [29, 53], barrel: [23, 55], radio: [28, 74],
+    workbench: [46, 58], toolbox: [25, 38], rack: [32, 112], forklift: [48, 72],
+    ammoRack: [31, 104], cot: [46, 38], bookshelf: [30, 106], stove: [31, 72],
+    medical: [48, 48], water: [24, 58], checkout: [45, 64], display: [32, 86],
+    sofa: [50, 48], monitor: [34, 68], server: [31, 108], suitRack: [33, 110],
+    hydroponics: [39, 82], feedBin: [42, 48], pew: [48, 42], grainSack: [28, 46],
+    gearbox: [35, 74], arcade: [36, 98], cinemaSeat: [27, 49],
+    camera: [28, 94], lightStand: [24, 108], fileCabinet: [31, 96]
+  };
+  const visualType = {
+    workbench: "table", toolbox: "crate", rack: "shelf", forklift: "forklift",
+    ammoRack: "shelf", cot: "bed", bookshelf: "shelf", stove: "stove",
+    medical: "bed", water: "barrel", checkout: "counter", display: "shelf",
+    sofa: "bench", monitor: "console", server: "server", suitRack: "locker",
+    hydroponics: "plant", feedBin: "counter", pew: "bench", grainSack: "grainSack",
+    gearbox: "gearbox", arcade: "arcade", cinemaSeat: "chair",
+    camera: "camera", lightStand: "lightStand", fileCabinet: "cabinet"
   };
   return positions.map(([x, y], index) => {
     const type = types[(index + building.index * 2) % types.length];
@@ -553,7 +705,8 @@ function interiorProps(building = activeBuilding()) {
       y,
       radius,
       height,
-      type,
+      type: visualType[type] || type,
+      detailType: type,
       tint: index % 3 === 0 ? building.accent : index % 2 ? building.trim : building.exterior
     };
   });
@@ -1018,11 +1171,15 @@ function impactMaterialFor(object = null) {
   const type = object?.type || "";
   const name = object?.name || "";
   const structureType = object?.structureType || "";
+  const structureMaterial = object?.material || "";
   const scene = object?.scene || (backgroundThemes[state.map.name] || backgroundThemes.Forest).scene;
-  if (structureType === "tent") return "fabric";
-  if (["barrel", "locker", "console", "radio", "pod", "car", "forklift", "antenna"].includes(type)
+  if (structureType === "tent" || structureMaterial === "canvas") return "fabric";
+  if (["corrugated", "steel", "alloy", "panel"].includes(structureMaterial)) return "metal";
+  if (structureMaterial === "timber") return "wood";
+  if (["brick", "concrete", "stucco", "stone", "glass"].includes(structureMaterial)) return "concrete";
+  if (["barrel", "locker", "console", "radio", "pod", "server", "arcade", "camera", "lightStand", "forklift", "antenna"].includes(type)
     || ["car", "forklift", "antenna"].includes(name)) return "metal";
-  if (["crate", "shelf", "desk", "chair", "table", "bed", "bench", "cabinet", "counter"].includes(type)
+  if (["crate", "shelf", "desk", "chair", "table", "bed", "bench", "cabinet", "counter", "grainSack"].includes(type)
     || ["tree", "log", "cart"].includes(name)) return "wood";
   if (["rock", "ruin", "well", "barrier", "pillar"].includes(name)) return "concrete";
   if (["space", "warehouse"].includes(scene)) return "metal";
@@ -2313,6 +2470,41 @@ function drawHorizonHaze(width, height, horizon, theme) {
   ctx.globalAlpha = 1;
 }
 
+function interiorKindFor(building) {
+  const type = building.structureType || "office";
+  if (type === "tent") return "canvas";
+  if (building.scene === "space" || ["module", "pod", "airlock", "dome"].includes(type)) return "space";
+  if (["cabin", "lodge", "shed", "barn", "house", "chapel", "tavern", "school", "stable", "mill"].includes(type)) {
+    return "rustic";
+  }
+  if (["bunker", "barracks", "depot"].includes(type)) return "military";
+  if (["hangar", "garage", "warehouse", "workshop", "tower"].includes(type)) return "industrial";
+  if (["storefront", "kiosk", "clinic", "arcade", "cinema", "service"].includes(type) || building.scene === "mall") {
+    return "retail";
+  }
+  if (["office", "highrise", "lobby", "studio", "archive", "annex", "apartment"].includes(type)) return "office";
+  return building.scene === "village" ? "rustic" : "industrial";
+}
+
+function interiorPaletteFor(building, kind) {
+  const palettes = {
+    canvas: { wall: "#736d53", wallLow: "#39372d", ceiling: "#55523f", floor: "#302c22", line: "rgba(225, 211, 165, .2)" },
+    rustic: { wall: "#6b5039", wallLow: "#2f261f", ceiling: "#30261e", floor: "#39291d", line: "rgba(223, 190, 139, .18)" },
+    industrial: { wall: "#59636a", wallLow: "#242b30", ceiling: "#22292e", floor: "#292d30", line: "rgba(215, 225, 225, .14)" },
+    military: { wall: "#66685b", wallLow: "#292d28", ceiling: "#262a27", floor: "#33352f", line: "rgba(222, 216, 174, .15)" },
+    space: { wall: "#526273", wallLow: "#182332", ceiling: "#111a27", floor: "#18222e", line: "rgba(111, 222, 245, .2)" },
+    retail: { wall: "#8b9294", wallLow: "#3d4346", ceiling: "#444d51", floor: "#4e5151", line: "rgba(239, 243, 236, .18)" },
+    office: { wall: "#6f7d87", wallLow: "#2c343b", ceiling: "#29323a", floor: "#343b40", line: "rgba(202, 225, 234, .17)" }
+  };
+  const palette = palettes[kind] || palettes.industrial;
+  return {
+    ...palette,
+    wall: mixHexColors(palette.wall, building.wall, .36),
+    ceiling: mixHexColors(palette.ceiling, building.ceiling, .32),
+    floor: mixHexColors(palette.floor, building.floor, .32)
+  };
+}
+
 function drawBuildingInterior(width, height, horizon, building) {
   const roomHorizon = clamp(horizon, height * .3, height * .67);
   const vanishX = width / 2 - Math.sin(state.player.angle) * width * .08;
@@ -2320,17 +2512,19 @@ function drawBuildingInterior(width, height, horizon, building) {
   const backRight = width * .8;
   const backTop = roomHorizon * .28;
   const backBottom = roomHorizon + height * .1;
+  const roomKind = interiorKindFor(building);
+  const palette = interiorPaletteFor(building, roomKind);
   ctx.save();
 
   const backWall = ctx.createLinearGradient(0, backTop, 0, backBottom);
-  backWall.addColorStop(0, building.wall);
-  backWall.addColorStop(1, "rgba(29, 34, 37, .98)");
+  backWall.addColorStop(0, palette.wall);
+  backWall.addColorStop(1, palette.wallLow);
   ctx.fillStyle = backWall;
   ctx.fillRect(0, 0, width, backBottom);
 
   const ceiling = ctx.createLinearGradient(0, 0, 0, roomHorizon);
-  ceiling.addColorStop(0, building.ceiling);
-  ceiling.addColorStop(1, "rgba(54, 62, 66, .96)");
+  ceiling.addColorStop(0, palette.ceiling);
+  ceiling.addColorStop(1, mixHexColors(palette.ceiling, palette.wall, .48));
   ctx.fillStyle = ceiling;
   ctx.beginPath();
   ctx.moveTo(0, 0);
@@ -2357,7 +2551,7 @@ function drawBuildingInterior(width, height, horizon, building) {
   ctx.fill();
 
   const floor = ctx.createLinearGradient(0, roomHorizon, 0, height);
-  floor.addColorStop(0, building.floor);
+  floor.addColorStop(0, palette.floor);
   floor.addColorStop(1, "rgba(10, 13, 15, .98)");
   ctx.fillStyle = floor;
   ctx.beginPath();
@@ -2368,7 +2562,7 @@ function drawBuildingInterior(width, height, horizon, building) {
   ctx.closePath();
   ctx.fill();
 
-  ctx.strokeStyle = "rgba(225, 232, 229, .12)";
+  ctx.strokeStyle = palette.line;
   ctx.lineWidth = 1;
   for (let i = -7; i <= 7; i++) {
     ctx.beginPath();
@@ -2386,15 +2580,70 @@ function drawBuildingInterior(width, height, horizon, building) {
   }
 
   const panelShift = Math.sin(state.player.angle) * width * .06;
-  for (let i = 0; i < 4; i++) {
-    const panelWidth = (backRight - backLeft) * .17;
-    const x = backLeft + (i + .5) * (backRight - backLeft) / 4 - panelWidth / 2 + panelShift;
-    const y = backTop + (backBottom - backTop) * .22;
-    ctx.fillStyle = "rgba(9, 15, 19, .58)";
-    ctx.fillRect(x, y, panelWidth, (backBottom - backTop) * .48);
-    ctx.strokeStyle = i % 2 ? building.trim : building.accent;
-    ctx.globalAlpha = .48;
-    ctx.strokeRect(x, y, panelWidth, (backBottom - backTop) * .48);
+  if (["space", "office", "retail"].includes(roomKind)) {
+    for (let i = 0; i < 4; i++) {
+      const panelWidth = (backRight - backLeft) * .17;
+      const x = backLeft + (i + .5) * (backRight - backLeft) / 4 - panelWidth / 2 + panelShift;
+      const y = backTop + (backBottom - backTop) * .22;
+      ctx.fillStyle = roomKind === "office" ? "rgba(78, 111, 124, .44)" : "rgba(9, 15, 19, .58)";
+      ctx.fillRect(x, y, panelWidth, (backBottom - backTop) * .48);
+      ctx.strokeStyle = i % 2 ? building.trim : building.accent;
+      ctx.globalAlpha = .48;
+      ctx.strokeRect(x, y, panelWidth, (backBottom - backTop) * .48);
+    }
+  } else if (roomKind === "rustic") {
+    ctx.strokeStyle = colorWithAlpha(building.trim, .55);
+    ctx.lineWidth = Math.max(4, width * .006);
+    for (let beam = 0; beam < 5; beam++) {
+      const beamX = backLeft + beam * (backRight - backLeft) / 4 + panelShift;
+      ctx.beginPath();
+      ctx.moveTo(beamX, backTop);
+      ctx.lineTo(beamX, backBottom);
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.moveTo(backLeft, backTop + (backBottom - backTop) * .28);
+    ctx.lineTo(backRight, backTop + (backBottom - backTop) * .28);
+    ctx.stroke();
+  } else if (roomKind === "canvas") {
+    ctx.strokeStyle = colorWithAlpha(building.trim, .7);
+    ctx.lineWidth = Math.max(2, width * .003);
+    ctx.beginPath();
+    ctx.moveTo(vanishX, 0);
+    ctx.lineTo(vanishX, backBottom);
+    ctx.moveTo(backLeft, backTop);
+    ctx.lineTo(vanishX, 0);
+    ctx.lineTo(backRight, backTop);
+    ctx.stroke();
+    for (let seam = 1; seam < 4; seam++) {
+      const seamY = backTop + (backBottom - backTop) * seam / 4;
+      ctx.beginPath();
+      ctx.moveTo(backLeft, seamY);
+      ctx.lineTo(backRight, seamY);
+      ctx.stroke();
+    }
+  } else {
+    ctx.fillStyle = "rgba(13, 18, 18, .38)";
+    for (let bay = 0; bay < 5; bay++) {
+      const bayX = backLeft + bay * (backRight - backLeft) / 4 + panelShift;
+      ctx.fillRect(bayX - 5, backTop, 10, backBottom - backTop);
+    }
+    ctx.strokeStyle = colorWithAlpha(building.trim, .56);
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(backLeft, backTop + 18);
+    ctx.lineTo(backRight, backTop + 18);
+    ctx.stroke();
+    if (roomKind === "military") {
+      ctx.fillStyle = "#d3b45e";
+      for (let stripe = 0; stripe < 7; stripe++) {
+        ctx.save();
+        ctx.translate(backLeft + 30 + stripe * 34, backBottom - 12);
+        ctx.rotate(-.55);
+        ctx.fillRect(-4, -20, 8, 40);
+        ctx.restore();
+      }
+    }
   }
   ctx.globalAlpha = 1;
 
@@ -2402,11 +2651,17 @@ function drawBuildingInterior(width, height, horizon, building) {
     const amount = (i + 1) / 5;
     const lightY = 18 + amount * Math.max(28, backTop - 30);
     const lightWidth = 110 - amount * 48;
-    ctx.shadowColor = building.accent;
+    ctx.shadowColor = roomKind === "rustic" || roomKind === "canvas" ? "#ffd28b" : building.accent;
     ctx.shadowBlur = 16;
-    ctx.fillStyle = building.accent;
+    ctx.fillStyle = roomKind === "rustic" || roomKind === "canvas" ? "#ffd28b" : building.accent;
     ctx.globalAlpha = .38 + amount * .34;
-    ctx.fillRect(vanishX - lightWidth / 2, lightY, lightWidth, 6);
+    if (roomKind === "rustic" || roomKind === "canvas") {
+      ctx.beginPath();
+      ctx.arc(vanishX, lightY, Math.max(4, 9 - i), 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.fillRect(vanishX - lightWidth / 2, lightY, lightWidth, 6);
+    }
   }
   ctx.shadowBlur = 0;
   ctx.globalAlpha = 1;
@@ -2649,6 +2904,215 @@ function drawExteriorWindow(centerX, top, width, height, scale) {
   ctx.stroke();
 }
 
+function drawFacadeTexture(x, y, w, h, building, scale) {
+  const material = building.material || "concrete";
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x - w / 2, y - h, w, h);
+  ctx.clip();
+  ctx.lineWidth = Math.max(1, scale * .7);
+
+  if (material === "timber") {
+    ctx.strokeStyle = "rgba(31, 22, 16, .42)";
+    for (let row = 1; row < 9; row++) {
+      const lineY = y - h + h * row / 9;
+      ctx.beginPath();
+      ctx.moveTo(x - w / 2, lineY);
+      ctx.lineTo(x + w / 2, lineY);
+      ctx.stroke();
+    }
+    ctx.fillStyle = colorWithAlpha(building.trim, .56);
+    ctx.fillRect(x - w * .47, y - h, w * .055, h);
+    ctx.fillRect(x + w * .415, y - h, w * .055, h);
+  } else if (material === "brick" || material === "stone") {
+    const rows = material === "stone" ? 6 : 9;
+    ctx.strokeStyle = material === "stone" ? "rgba(27, 24, 21, .4)" : "rgba(231, 218, 198, .24)";
+    for (let row = 0; row <= rows; row++) {
+      const lineY = y - h + h * row / rows;
+      ctx.beginPath();
+      ctx.moveTo(x - w / 2, lineY);
+      ctx.lineTo(x + w / 2, lineY);
+      ctx.stroke();
+      if (row === rows) continue;
+      const columns = material === "stone" ? 5 : 8;
+      const offset = row % 2 ? .5 : 0;
+      for (let col = 0; col < columns; col++) {
+        const lineX = x - w / 2 + w * (col + offset) / columns;
+        ctx.beginPath();
+        ctx.moveTo(lineX, lineY);
+        ctx.lineTo(lineX, lineY + h / rows);
+        ctx.stroke();
+      }
+    }
+  } else if (["corrugated", "steel", "alloy", "panel"].includes(material)) {
+    ctx.strokeStyle = material === "alloy"
+      ? colorWithAlpha(building.accent, .3)
+      : "rgba(226, 235, 234, .2)";
+    const ribs = material === "corrugated" ? 14 : 9;
+    for (let rib = 1; rib < ribs; rib++) {
+      const lineX = x - w / 2 + w * rib / ribs;
+      ctx.beginPath();
+      ctx.moveTo(lineX, y - h);
+      ctx.lineTo(lineX, y);
+      ctx.stroke();
+    }
+    if (material === "alloy" || material === "panel") {
+      for (let row = 1; row < 4; row++) {
+        const lineY = y - h + h * row / 4;
+        ctx.beginPath();
+        ctx.moveTo(x - w / 2, lineY);
+        ctx.lineTo(x + w / 2, lineY);
+        ctx.stroke();
+      }
+    }
+  } else if (material === "glass") {
+    const sheen = ctx.createLinearGradient(x - w / 2, 0, x + w / 2, 0);
+    sheen.addColorStop(0, "rgba(22, 44, 57, .42)");
+    sheen.addColorStop(.35, "rgba(124, 181, 201, .25)");
+    sheen.addColorStop(.5, "rgba(231, 241, 240, .17)");
+    sheen.addColorStop(.7, "rgba(69, 115, 139, .28)");
+    sheen.addColorStop(1, "rgba(13, 29, 40, .48)");
+    ctx.fillStyle = sheen;
+    ctx.fillRect(x - w / 2, y - h, w, h);
+    ctx.strokeStyle = "rgba(206, 227, 232, .26)";
+    for (let col = 1; col < 5; col++) {
+      const lineX = x - w / 2 + w * col / 5;
+      ctx.beginPath();
+      ctx.moveTo(lineX, y - h);
+      ctx.lineTo(lineX, y);
+      ctx.stroke();
+    }
+    for (let row = 1; row < 5; row++) {
+      const lineY = y - h + h * row / 5;
+      ctx.beginPath();
+      ctx.moveTo(x - w / 2, lineY);
+      ctx.lineTo(x + w / 2, lineY);
+      ctx.stroke();
+    }
+  } else {
+    ctx.strokeStyle = "rgba(224, 229, 219, .13)";
+    ctx.beginPath();
+    ctx.moveTo(x, y - h);
+    ctx.lineTo(x, y);
+    ctx.moveTo(x - w / 2, y - h * .52);
+    ctx.lineTo(x + w / 2, y - h * .52);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(24, 20, 15, .08)";
+    ctx.beginPath();
+    ctx.ellipse(x - w * .28, y - h * .22, w * .13, h * .34, -.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawBuildingSign(x, y, w, h, building) {
+  const signW = w * .58;
+  const signH = clamp(h * .09, 13, 28);
+  const signY = y - h * .94;
+  ctx.fillStyle = "rgba(8, 12, 14, .86)";
+  ctx.fillRect(x - signW / 2, signY, signW, signH);
+  ctx.strokeStyle = colorWithAlpha(building.accent, .68);
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x - signW / 2, signY, signW, signH);
+  ctx.fillStyle = "#eef2ef";
+  ctx.font = `700 ${clamp(signH * .48, 7, 13)}px sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(building.name.toUpperCase(), x, signY + signH * .53, signW - 10);
+}
+
+function drawHighRiseExterior(x, y, w, h, building, nearEntrance, scale) {
+  const facade = ctx.createLinearGradient(x - w / 2, 0, x + w / 2, 0);
+  facade.addColorStop(0, "#172b38");
+  facade.addColorStop(.42, building.exterior);
+  facade.addColorStop(.7, "#55798b");
+  facade.addColorStop(1, "#13232d");
+  ctx.fillStyle = facade;
+  ctx.fillRect(x - w / 2, y - h, w, h);
+  drawFacadeTexture(x, y, w, h, { ...building, material: "glass" }, scale);
+
+  ctx.strokeStyle = "rgba(221, 236, 238, .28)";
+  ctx.lineWidth = Math.max(1, scale);
+  for (let floor = 1; floor < 8; floor++) {
+    const floorY = y - h + h * floor / 8;
+    ctx.beginPath();
+    ctx.moveTo(x - w / 2, floorY);
+    ctx.lineTo(x + w / 2, floorY);
+    ctx.stroke();
+  }
+  ctx.fillStyle = building.roof;
+  ctx.fillRect(x - w * .54, y - h * 1.04, w * 1.08, h * .05);
+  ctx.fillStyle = "rgba(17, 25, 29, .9)";
+  ctx.fillRect(x - w * .18, y - h * 1.12, w * .36, h * .08);
+  ctx.strokeStyle = building.accent;
+  ctx.beginPath();
+  ctx.moveTo(x, y - h * 1.12);
+  ctx.lineTo(x, y - h * 1.3);
+  ctx.stroke();
+  drawExteriorDoor(x, y, w * .26, h * .18, building, nearEntrance);
+  drawBuildingSign(x, y - h * .02, w, h * .32, building);
+}
+
+function drawSpaceModuleExterior(x, y, w, h, building, nearEntrance, scale) {
+  const left = x - w * .48;
+  const right = x + w * .48;
+  const top = y - h * .88;
+  const shoulder = h * .18;
+  const body = ctx.createLinearGradient(left, 0, right, 0);
+  body.addColorStop(0, "#243241");
+  body.addColorStop(.28, building.exterior);
+  body.addColorStop(.7, "#728496");
+  body.addColorStop(1, "#1a2633");
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.moveTo(left + shoulder, top);
+  ctx.lineTo(right - shoulder, top);
+  ctx.quadraticCurveTo(right, top, right, top + shoulder);
+  ctx.lineTo(right, y - shoulder);
+  ctx.quadraticCurveTo(right, y, right - shoulder, y);
+  ctx.lineTo(left + shoulder, y);
+  ctx.quadraticCurveTo(left, y, left, y - shoulder);
+  ctx.lineTo(left, top + shoulder);
+  ctx.quadraticCurveTo(left, top, left + shoulder, top);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = colorWithAlpha(building.trim, .55);
+  ctx.lineWidth = Math.max(2, scale);
+  for (let rib = 1; rib < 6; rib++) {
+    const ribX = left + (right - left) * rib / 6;
+    ctx.beginPath();
+    ctx.moveTo(ribX, top + 4);
+    ctx.lineTo(ribX, y - 4);
+    ctx.stroke();
+  }
+  ctx.fillStyle = "rgba(12, 25, 34, .92)";
+  ctx.fillRect(x - w * .36, y - h * .68, w * .17, h * .2);
+  ctx.fillRect(x + w * .19, y - h * .68, w * .17, h * .2);
+  ctx.strokeStyle = colorWithAlpha(building.accent, .7);
+  ctx.strokeRect(x - w * .36, y - h * .68, w * .17, h * .2);
+  ctx.strokeRect(x + w * .19, y - h * .68, w * .17, h * .2);
+
+  if (building.structureType === "airlock") {
+    ctx.fillStyle = "rgba(9, 16, 22, .96)";
+    ctx.beginPath();
+    ctx.arc(x, y - h * .34, w * .19, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = nearEntrance ? building.accent : colorWithAlpha(building.trim, .72);
+    ctx.lineWidth = Math.max(3, w * .025);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x - w * .13, y - h * .34);
+    ctx.lineTo(x + w * .13, y - h * .34);
+    ctx.moveTo(x, y - h * .47);
+    ctx.lineTo(x, y - h * .21);
+    ctx.stroke();
+  } else {
+    drawExteriorDoor(x, y, w * .18, h * .48, building, nearEntrance);
+  }
+  drawBuildingSign(x, y - h * .02, w, h * .9, building);
+}
+
 function drawTentExterior(x, y, w, h, building, nearEntrance) {
   ctx.fillStyle = building.roof;
   ctx.beginPath();
@@ -2689,6 +3153,26 @@ function drawTentExterior(x, y, w, h, building, nearEntrance) {
   ctx.globalAlpha = nearEntrance ? .98 : .58;
   ctx.stroke();
   ctx.globalAlpha = 1;
+
+  ctx.strokeStyle = colorWithAlpha(building.trim, .38);
+  ctx.lineWidth = Math.max(1, w * .008);
+  ctx.beginPath();
+  ctx.moveTo(x - w * .28, y - h * .5);
+  ctx.lineTo(x, y - h);
+  ctx.moveTo(x + w * .28, y - h * .5);
+  ctx.lineTo(x, y - h);
+  ctx.stroke();
+  ctx.fillStyle = "rgba(53, 48, 36, .48)";
+  ctx.fillRect(x - w * .5, y - h * .08, w, h * .08);
+
+  const placardW = w * .34;
+  ctx.fillStyle = "rgba(17, 20, 17, .84)";
+  ctx.fillRect(x + w * .17, y - h * .37, placardW, h * .13);
+  ctx.fillStyle = "#edf0df";
+  ctx.font = `700 ${clamp(h * .055, 7, 12)}px sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(building.name.toUpperCase(), x + w * .34, y - h * .305, placardW - 6);
 }
 
 function drawTowerExterior(x, y, w, h, building, nearEntrance, scale) {
@@ -2712,6 +3196,9 @@ function drawTowerExterior(x, y, w, h, building, nearEntrance, scale) {
   ctx.fillRect(x - w * .37, y - h * .86, w * .74, h * .38);
   ctx.fillStyle = building.roof;
   ctx.fillRect(x - w * .44, y - h * .94, w * .88, h * .09);
+  ctx.strokeStyle = colorWithAlpha(building.trim, .72);
+  ctx.lineWidth = Math.max(2, w * .018);
+  ctx.strokeRect(x - w * .5, y - h * .98, w, h * .53);
   drawExteriorWindow(x - w * .2, y - h * .78, w * .18, h * .12, scale);
   drawExteriorWindow(x + w * .2, y - h * .78, w * .18, h * .12, scale);
   drawExteriorDoor(x, platformY, w * .22, h * .26, building, nearEntrance);
@@ -2731,6 +3218,17 @@ function drawTowerExterior(x, y, w, h, building, nearEntrance, scale) {
   }
   ctx.stroke();
   ctx.globalAlpha = 1;
+
+  ctx.strokeStyle = colorWithAlpha(building.trim, .72);
+  ctx.lineWidth = Math.max(2, scale);
+  ctx.beginPath();
+  ctx.moveTo(x - w * .48, y - h * .98);
+  ctx.lineTo(x - w * .48, y - h * 1.08);
+  ctx.moveTo(x + w * .48, y - h * .98);
+  ctx.lineTo(x + w * .48, y - h * 1.08);
+  ctx.moveTo(x - w * .48, y - h * 1.06);
+  ctx.lineTo(x + w * .48, y - h * 1.06);
+  ctx.stroke();
 }
 
 function drawBunkerExterior(x, y, w, h, building, nearEntrance) {
@@ -2746,10 +3244,35 @@ function drawBunkerExterior(x, y, w, h, building, nearEntrance) {
   ctx.fill();
   ctx.fillStyle = building.roof;
   ctx.fillRect(x - w * .34, y - h * .92, w * .68, h * .09);
+  ctx.strokeStyle = "rgba(229, 224, 203, .18)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x, y - h * .88);
+  ctx.lineTo(x, y);
+  ctx.moveTo(x - w * .48, y - h * .34);
+  ctx.lineTo(x + w * .48, y - h * .34);
+  ctx.stroke();
   ctx.fillStyle = "rgba(6, 10, 12, .86)";
   ctx.fillRect(x - w * .42, y - h * .6, w * .23, Math.max(5, h * .09));
   ctx.fillRect(x + w * .19, y - h * .6, w * .23, Math.max(5, h * .09));
   drawExteriorDoor(x, y, w * .18, h * .58, building, nearEntrance);
+  for (const side of [-1, 1]) {
+    ctx.fillStyle = colorWithAlpha(building.trim, .72);
+    for (let bag = 0; bag < 3; bag++) {
+      ctx.beginPath();
+      ctx.ellipse(
+        x + side * (w * .2 + bag * w * .08),
+        y - h * .04,
+        w * .075,
+        h * .07,
+        0,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+    }
+  }
+  drawBuildingSign(x, y - h * .02, w * .72, h * .72, building);
 }
 
 function drawDomeExterior(x, y, w, h, building, nearEntrance) {
@@ -2773,7 +3296,16 @@ function drawDomeExterior(x, y, w, h, building, nearEntrance) {
   ctx.moveTo(x, y - h * 1.03);
   ctx.lineTo(x, y);
   ctx.stroke();
+  for (const side of [-1, 1]) {
+    ctx.fillStyle = "rgba(17, 38, 50, .9)";
+    ctx.beginPath();
+    ctx.arc(x + side * w * .24, y - h * .48, w * .075, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = colorWithAlpha(building.accent, .62);
+    ctx.stroke();
+  }
   drawExteriorDoor(x, y, w * .18, h * .46, building, nearEntrance);
+  drawBuildingSign(x, y - h * .02, w * .76, h * .88, building);
 }
 
 function drawBuildingExterior(x, y, scale, building, screenWidth, screenHeight) {
@@ -2796,6 +3328,16 @@ function drawBuildingExterior(x, y, scale, building, screenWidth, screenHeight) 
 
   if (type === "tent") {
     drawTentExterior(x, y, w, h, building, nearEntrance);
+    ctx.restore();
+    return;
+  }
+  if (type === "highrise") {
+    drawHighRiseExterior(x, y, w, h, building, nearEntrance, scale);
+    ctx.restore();
+    return;
+  }
+  if (type === "module" || type === "airlock") {
+    drawSpaceModuleExterior(x, y, w, h, building, nearEntrance, scale);
     ctx.restore();
     return;
   }
@@ -2822,6 +3364,7 @@ function drawBuildingExterior(x, y, scale, building, screenWidth, screenHeight) 
   facade.addColorStop(1, "rgba(20, 25, 29, .98)");
   ctx.fillStyle = facade;
   ctx.fillRect(x - w / 2, y - h, w, h);
+  drawFacadeTexture(x, y, w, h, building, scale);
   ctx.shadowBlur = 0;
 
   const pitchedRoof = [
@@ -2846,7 +3389,23 @@ function drawBuildingExterior(x, y, scale, building, screenWidth, screenHeight) 
   }
 
   const wideEntrance = ["hangar", "garage", "warehouse", "stable"].includes(type);
-  if (!wideEntrance) {
+  const retailFront = ["storefront", "clinic", "arcade", "cinema", "lobby"].includes(type);
+  if (type === "apartment") {
+    for (let floor = 0; floor < 3; floor++) {
+      for (let column = -1; column <= 1; column++) {
+        drawExteriorWindow(
+          x + column * w * .27,
+          y - h * (.84 - floor * .23),
+          w * .14,
+          h * .14,
+          scale
+        );
+      }
+    }
+  } else if (retailFront) {
+    drawExteriorWindow(x - w * .27, y - h * .58, w * .27, h * .38, scale);
+    drawExteriorWindow(x + w * .27, y - h * .58, w * .27, h * .38, scale);
+  } else if (!wideEntrance) {
     drawExteriorWindow(x - w * .27, y - h * .68, w * .18, h * .2, scale);
     drawExteriorWindow(x + w * .27, y - h * .68, w * .18, h * .2, scale);
   } else {
@@ -2875,11 +3434,44 @@ function drawBuildingExterior(x, y, scale, building, screenWidth, screenHeight) 
 
   ctx.fillStyle = building.trim;
   ctx.fillRect(x - w * .18, y - h * .94, w * .36, Math.max(5, h * .055));
-  if (type === "kiosk") {
+  if (type === "kiosk" || retailFront) {
     ctx.fillStyle = building.accent;
     ctx.globalAlpha = .56;
     ctx.fillRect(x - w * .55, y - h * .58, w * 1.1, Math.max(6, h * .1));
     ctx.globalAlpha = 1;
+  }
+  if (["cabin", "lodge", "house", "tavern", "school"].includes(type)) {
+    ctx.fillStyle = "#2a2621";
+    ctx.fillRect(x + w * .27, y - h * 1.22, w * .11, h * .3);
+    ctx.fillStyle = "rgba(203, 210, 203, .18)";
+    ctx.beginPath();
+    ctx.ellipse(x + w * .325, y - h * 1.29, w * .07, h * .11, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (["office", "service", "annex", "archive", "cinema"].includes(type)) {
+    ctx.fillStyle = "rgba(19, 27, 31, .94)";
+    ctx.fillRect(x + w * .2, y - h * 1.18, w * .22, h * .1);
+    ctx.strokeStyle = "rgba(222, 235, 235, .22)";
+    for (let vent = 1; vent < 4; vent++) {
+      const ventX = x + w * (.2 + vent * .055);
+      ctx.beginPath();
+      ctx.moveTo(ventX, y - h * 1.17);
+      ctx.lineTo(ventX, y - h * 1.09);
+      ctx.stroke();
+    }
+  }
+  if (type === "chapel") {
+    ctx.fillStyle = building.roof;
+    ctx.beginPath();
+    ctx.moveTo(x - w * .14, y - h * 1.12);
+    ctx.lineTo(x, y - h * 1.52);
+    ctx.lineTo(x + w * .14, y - h * 1.12);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "rgba(7, 9, 10, .82)";
+    ctx.beginPath();
+    ctx.arc(x, y - h * 1.24, w * .045, 0, Math.PI * 2);
+    ctx.fill();
   }
   if (type === "mill") {
     const hubX = x + w * .27;
@@ -2898,6 +3490,7 @@ function drawBuildingExterior(x, y, scale, building, screenWidth, screenHeight) 
     ctx.arc(hubX, hubY, Math.max(4, w * .045), 0, Math.PI * 2);
     ctx.fill();
   }
+  drawBuildingSign(x, y, w, h, building);
   ctx.strokeStyle = "rgba(255,255,255,.16)";
   ctx.lineWidth = 1.5;
   ctx.strokeRect(x - w / 2, y - h, w, h);
@@ -2956,6 +3549,12 @@ function drawInteriorProp(x, y, scale, prop) {
     ctx.moveTo(left + width * .87, top + height * .14);
     ctx.lineTo(left + width * .13, top + height * .86);
     ctx.stroke();
+    if (prop.detailType === "toolbox") {
+      ctx.fillStyle = "rgba(20, 25, 27, .9)";
+      ctx.fillRect(left + width * .28, top - height * .08, width * .44, height * .12);
+      ctx.fillStyle = "rgba(227, 214, 168, .74)";
+      ctx.fillRect(left + width * .15, top + height * .45, width * .7, Math.max(2, height * .08));
+    }
   } else if (prop.type === "barrel") {
     const gradient = ctx.createLinearGradient(left, 0, left + width, 0);
     gradient.addColorStop(0, dark);
@@ -2974,6 +3573,137 @@ function drawInteriorProp(x, y, scale, prop) {
       ctx.lineTo(left + width, lineY);
       ctx.stroke();
     }
+  } else if (prop.type === "forklift") {
+    ctx.fillStyle = "#c99b35";
+    ctx.fillRect(left, top + height * .46, width * .78, height * .44);
+    ctx.fillStyle = "rgba(16, 21, 23, .96)";
+    ctx.fillRect(left + width * .2, top + height * .16, width * .48, height * .34);
+    ctx.fillStyle = "#20272c";
+    for (const wheelX of [left + width * .18, left + width * .66]) {
+      ctx.beginPath();
+      ctx.arc(wheelX, top + height * .9, width * .14, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.strokeStyle = "#252d31";
+    ctx.lineWidth = Math.max(3, width * .07);
+    ctx.beginPath();
+    ctx.moveTo(left + width * .82, top + height * .06);
+    ctx.lineTo(left + width * .82, top + height);
+    ctx.moveTo(left + width * .95, top + height * .06);
+    ctx.lineTo(left + width * .95, top + height);
+    ctx.stroke();
+    ctx.lineWidth = Math.max(2, width * .04);
+    ctx.beginPath();
+    ctx.moveTo(left + width * .82, top + height * .84);
+    ctx.lineTo(left + width * 1.18, top + height * .84);
+    ctx.stroke();
+  } else if (prop.type === "stove") {
+    ctx.fillStyle = "rgba(25, 28, 27, .98)";
+    ctx.fillRect(left, top + height * .18, width, height * .82);
+    ctx.fillStyle = "rgba(8, 10, 10, .96)";
+    ctx.fillRect(left + width * .14, top + height * .38, width * .72, height * .4);
+    ctx.strokeStyle = "rgba(231, 225, 200, .3)";
+    ctx.strokeRect(left + width * .14, top + height * .38, width * .72, height * .4);
+    ctx.fillStyle = "rgba(207, 96, 42, .48)";
+    ctx.fillRect(left + width * .25, top + height * .5, width * .5, height * .13);
+    ctx.fillStyle = "#22282a";
+    ctx.fillRect(x - width * .09, top - height * .2, width * .18, height * .38);
+  } else if (prop.type === "server") {
+    ctx.fillStyle = "rgba(11, 16, 21, .98)";
+    ctx.fillRect(left, top, width, height);
+    ctx.strokeStyle = "rgba(205, 222, 228, .22)";
+    for (let rack = 1; rack < 8; rack++) {
+      const rackY = top + height * rack / 8;
+      ctx.beginPath();
+      ctx.moveTo(left + width * .08, rackY);
+      ctx.lineTo(left + width * .92, rackY);
+      ctx.stroke();
+    }
+    for (let led = 0; led < 6; led++) {
+      ctx.fillStyle = led % 3 === 0 ? "#ffbc55" : buildingThemes["Space station"].accent;
+      ctx.fillRect(left + width * (.18 + (led % 2) * .45), top + height * (.15 + Math.floor(led / 2) * .24), 3, 3);
+    }
+  } else if (prop.type === "grainSack") {
+    ctx.fillStyle = light;
+    ctx.beginPath();
+    ctx.moveTo(x - width * .34, top + height * .16);
+    ctx.quadraticCurveTo(left, top + height * .5, x - width * .4, y);
+    ctx.lineTo(x + width * .4, y);
+    ctx.quadraticCurveTo(left + width, top + height * .5, x + width * .34, top + height * .16);
+    ctx.quadraticCurveTo(x, top, x - width * .34, top + height * .16);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = "rgba(64, 48, 29, .54)";
+    ctx.beginPath();
+    ctx.moveTo(x - width * .3, top + height * .18);
+    ctx.lineTo(x + width * .3, top + height * .18);
+    ctx.stroke();
+  } else if (prop.type === "gearbox") {
+    ctx.fillStyle = "rgba(24, 30, 32, .98)";
+    ctx.fillRect(left, top + height * .24, width, height * .76);
+    ctx.strokeStyle = light;
+    ctx.lineWidth = Math.max(2, scale);
+    for (const [gearX, gearY, gearR] of [[.35, .55, .2], [.68, .66, .16]]) {
+      ctx.beginPath();
+      ctx.arc(left + width * gearX, top + height * gearY, width * gearR, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(left + width * gearX, top + height * gearY, width * gearR * .3, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  } else if (prop.type === "arcade") {
+    ctx.fillStyle = "rgba(21, 20, 29, .98)";
+    ctx.beginPath();
+    ctx.moveTo(left + width * .08, top);
+    ctx.lineTo(left + width * .92, top);
+    ctx.lineTo(left + width, top + height);
+    ctx.lineTo(left, top + height);
+    ctx.closePath();
+    ctx.fill();
+    ctx.shadowColor = light;
+    ctx.shadowBlur = 9;
+    ctx.fillStyle = light;
+    ctx.fillRect(left + width * .16, top + height * .16, width * .68, height * .34);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "rgba(10, 12, 17, .92)";
+    ctx.fillRect(left + width * .12, top + height * .58, width * .76, height * .13);
+    ctx.fillStyle = "#f04f68";
+    ctx.beginPath();
+    ctx.arc(left + width * .66, top + height * .64, width * .06, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (prop.type === "camera") {
+    ctx.strokeStyle = "rgba(30, 36, 39, .98)";
+    ctx.lineWidth = Math.max(3, width * .07);
+    ctx.beginPath();
+    ctx.moveTo(x, top + height * .35);
+    ctx.lineTo(left + width * .18, y);
+    ctx.moveTo(x, top + height * .35);
+    ctx.lineTo(left + width * .82, y);
+    ctx.moveTo(x, top + height * .35);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(18, 23, 27, .98)";
+    ctx.fillRect(left + width * .12, top, width * .76, height * .32);
+    ctx.fillStyle = light;
+    ctx.beginPath();
+    ctx.arc(left + width * .82, top + height * .16, width * .14, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (prop.type === "lightStand") {
+    ctx.strokeStyle = "rgba(31, 37, 39, .98)";
+    ctx.lineWidth = Math.max(3, width * .08);
+    ctx.beginPath();
+    ctx.moveTo(x, top + height * .18);
+    ctx.lineTo(x, y);
+    ctx.moveTo(x, y - height * .2);
+    ctx.lineTo(left + width * .16, y);
+    ctx.moveTo(x, y - height * .2);
+    ctx.lineTo(left + width * .84, y);
+    ctx.stroke();
+    ctx.fillStyle = light;
+    ctx.shadowColor = light;
+    ctx.shadowBlur = 14;
+    ctx.fillRect(left + width * .05, top, width * .9, height * .22);
+    ctx.shadowBlur = 0;
   } else if (["shelf", "locker", "cabinet"].includes(prop.type)) {
     ctx.fillStyle = dark;
     ctx.fillRect(left, top, width, height);
@@ -2995,6 +3725,29 @@ function drawInteriorProp(x, y, scale, prop) {
       ctx.fillRect(left + width * .18, top + height * .56, width * .25, height * .14);
       ctx.fillStyle = "rgba(105, 145, 132, .72)";
       ctx.fillRect(left + width * .57, top + height * .31, width * .22, height * .18);
+      if (prop.detailType === "ammoRack") {
+        ctx.fillStyle = "#b59046";
+        for (let ammo = 0; ammo < 6; ammo++) {
+          ctx.fillRect(
+            left + width * (.14 + (ammo % 3) * .27),
+            top + height * (.18 + Math.floor(ammo / 3) * .42),
+            width * .1,
+            height * .18
+          );
+        }
+      }
+      if (prop.detailType === "bookshelf" || prop.detailType === "fileCabinet") {
+        const colors = ["#8e4d3e", "#546f87", "#aa8e4d", "#496a55"];
+        for (let book = 0; book < 8; book++) {
+          ctx.fillStyle = colors[book % colors.length];
+          ctx.fillRect(
+            left + width * (.12 + (book % 4) * .2),
+            top + height * (.17 + Math.floor(book / 4) * .48),
+            width * .12,
+            height * .19
+          );
+        }
+      }
     } else {
       ctx.beginPath();
       ctx.moveTo(x, top + height * .06);
@@ -3029,6 +3782,12 @@ function drawInteriorProp(x, y, scale, prop) {
       ctx.fillRect(left + width * .06, top + topHeight, width * .88, height - topHeight);
       ctx.fillStyle = "rgba(238, 241, 232, .18)";
       ctx.fillRect(left + width * .14, top + height * .38, width * .72, height * .42);
+      if (prop.detailType === "checkout") {
+        ctx.fillStyle = "rgba(15, 20, 22, .96)";
+        ctx.fillRect(left + width * .55, top - height * .22, width * .28, height * .25);
+        ctx.fillStyle = light;
+        ctx.fillRect(left + width * .61, top - height * .18, width * .16, height * .1);
+      }
     } else {
       const legWidth = Math.max(4, width * .11);
       ctx.fillRect(left + width * .1, top + topHeight, legWidth, height - topHeight);
@@ -3057,6 +3816,11 @@ function drawInteriorProp(x, y, scale, prop) {
       ctx.strokeStyle = "rgba(130, 232, 255, .74)";
       ctx.lineWidth = Math.max(2, scale);
       ctx.strokeRect(left + width * .05, top + height * .24, width * .9, height * .5);
+    }
+    if (prop.detailType === "medical") {
+      ctx.fillStyle = "#f4f1e9";
+      ctx.fillRect(left + width * .16, top + height * .35, width * .2, height * .07);
+      ctx.fillRect(left + width * .225, top + height * .285, width * .07, height * .2);
     }
   } else if (prop.type === "plant") {
     ctx.fillStyle = "rgba(105, 78, 55, .98)";
