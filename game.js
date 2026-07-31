@@ -363,14 +363,14 @@ const difficultySettings = {
     playerFocus: .42, reaction: 1.3
   },
   Medium: {
-    duelSpeedFactor: .81, roamingSpeed: [58, 88], accuracy: .92,
-    minAccuracy: .16, maxAccuracy: .82, fireDelay: 1, damage: 1,
-    playerFocus: .55, reaction: 1
+    duelSpeedFactor: .88, roamingSpeed: [76, 112], accuracy: 1.08,
+    minAccuracy: .22, maxAccuracy: .88, fireDelay: .82, damage: 1.12,
+    playerFocus: .64, reaction: .78
   },
   Hard: {
-    duelSpeedFactor: 1, roamingSpeed: [90, 130], accuracy: 1.18,
-    minAccuracy: .24, maxAccuracy: .94, fireDelay: .72, damage: 1.22,
-    playerFocus: .72, reaction: .72
+    duelSpeedFactor: 1.08, roamingSpeed: [118, 158], accuracy: 1.38,
+    minAccuracy: .34, maxAccuracy: .98, fireDelay: .52, damage: 1.42,
+    playerFocus: .86, reaction: .48
   }
 };
 
@@ -627,6 +627,13 @@ function armor() {
 
 function difficulty() {
   return difficultySettings[state.difficulty] || difficultySettings.Medium;
+}
+
+function teamBotBoost() {
+  if (!isTeamBattle()) return { rank: 0, health: 0, speed: 1, armor: 0, aggression: 1 };
+  if (state.difficulty === "Hard") return { rank: 6, health: 54, speed: 1.16, armor: 3, aggression: 1.35 };
+  if (state.difficulty === "Medium") return { rank: 3, health: 30, speed: 1.08, armor: 2, aggression: 1.16 };
+  return { rank: 0, health: 0, speed: 1, armor: 0, aggression: 1 };
 }
 
 function addChat(text) {
@@ -1429,18 +1436,20 @@ function generateTraps(size) {
 function spawnEnemies(size) {
   const names = ["Ridge", "Bolt", "Echo", "Mako", "Vex", "Shade", "Pixel", "Drift", "Nova", "Jett", "Orbit"];
   const botDifficulty = difficulty();
+  const boost = teamBotBoost();
   state.enemies = [];
   for (let i = 0; i < modeEnemyCount(); i++) {
     const team = teamForEnemyIndex(i);
     const p = usesTeams()
       ? squadSpawnPoint(team, teamSlotForEnemyIndex(i), size)
       : randomPoint(size);
+    const baseRank = Math.floor(state.level / 2) + 1 + Math.floor(rand(0, 4));
     const rank = isRivalDuel()
       ? state.weaponRank
-      : clamp(Math.floor(state.level / 2) + 1 + Math.floor(rand(0, 4)), 1, weapons.length);
+      : clamp(baseRank + boost.rank, 1, weapons.length);
     const health = isRivalDuel()
       ? (state.armorRank >= 16 ? 190 : 150)
-      : 46 + state.level * 4 + rand(0, 22);
+      : 46 + state.level * 4 + boost.health + rand(0, 22);
     state.enemies.push({
       id: names[i],
       ...p,
@@ -1451,12 +1460,12 @@ function spawnEnemies(size) {
       stamina: 150,
       exhausted: false,
       weaponRank: rank,
-      armor: isRivalDuel() ? state.armorRank : clamp(Math.floor(rank / 2), 1, armors.length),
+      armor: isRivalDuel() ? state.armorRank : clamp(Math.floor(rank / 2) + boost.armor, 1, armors.length),
       speed: isRivalDuel()
         ? 185 * armor().speed * botDifficulty.duelSpeedFactor
-        : rand(...botDifficulty.roamingSpeed),
-      shootCd: rand(.2, 1.6) * botDifficulty.fireDelay,
-      tacticCd: rand(.3, 1.1),
+        : rand(...botDifficulty.roamingSpeed) * boost.speed,
+      shootCd: rand(.12, 1.1) * botDifficulty.fireDelay,
+      tacticCd: rand(.18, .82),
       strafeDir: Math.random() < .5 ? -1 : 1,
       guardTimer: 0,
       targetCd: rand(0, .8),
@@ -1570,8 +1579,8 @@ function modeObjectiveText() {
   if (isRivalDuel()) return "Win 5 rounds before your rival.";
   if (state.mode.includes("1v1")) return "Eliminate the rival before they eliminate you.";
   if (isTeamBattle()) return state.mode.includes("6v6")
-    ? "Blue squad 6 vs Red squad 6. Fight with your 5 teammates and eliminate all 6 Red robots."
-    : "Blue squad 4 vs Red squad 4. Fight with your 3 teammates and eliminate all 4 Red robots.";
+    ? `Blue squad 6 vs Red squad 6. ${state.difficulty} bots use stronger weapons and tighter aim.`
+    : `Blue squad 4 vs Red squad 4. ${state.difficulty} bots use stronger weapons and tighter aim.`;
   if (isFreeForAll()) return "Be the last player standing.";
   if (isBedwars()) return "Protect the Blue bed, break the other beds, and eliminate every enemy team.";
   return "Eliminate every opponent.";
@@ -2428,9 +2437,10 @@ function chooseEnemyTarget(enemy) {
     ? state.beds.filter(bed => bed.alive && bed.team !== enemy.team)
     : [];
   const botDifficulty = difficulty();
+  const boost = teamBotBoost();
   const canTargetPlayer = playerIsPresent() && areCombatantsHostile(enemy, state.player);
   const targetPlayer = canTargetPlayer
-    && (!rivals.length || Math.random() < botDifficulty.playerFocus);
+    && (!rivals.length || Math.random() < clamp(botDifficulty.playerFocus * boost.aggression, 0, .96));
   let target = targetPlayer ? state.player : null;
 
   if (!target && hostileBeds.length && (rivals.length === 0 || Math.random() < .3)) {
@@ -2460,7 +2470,7 @@ function chooseEnemyTarget(enemy) {
     return null;
   }
   enemy.targetId = target === state.player ? "player" : target.id;
-  enemy.targetCd = (target === state.player ? rand(1.5, 3) : rand(.85, 1.9)) * botDifficulty.reaction;
+  enemy.targetCd = (target === state.player ? rand(.75, 1.8) : rand(.55, 1.25)) * botDifficulty.reaction / boost.aggression;
   return target;
 }
 
@@ -2490,18 +2500,19 @@ function enemyShoot(enemy, target, dt) {
   const w = weapons[enemy.weaponRank - 1];
   if (d < w.range * .75 && enemy.shootCd <= 0) {
     const profile = weaponProfile(w);
-    enemy.shootCd = (rand(.65, 1.4) + 1 / w.rate) * botDifficulty.fireDelay;
+    const boost = teamBotBoost();
+    enemy.shootCd = (rand(.42, 1.05) + 1 / w.rate) * botDifficulty.fireDelay / boost.aggression;
     const rangeRatio = clamp(d / (w.range * .75), 0, 1);
     const fatiguePenalty = enemy.stamina < 25 ? .72 : 1;
     const accuracy = clamp(
-      (.84 - rangeRatio * .54) * fatiguePenalty * botDifficulty.accuracy,
+      (.88 - rangeRatio * .42) * fatiguePenalty * botDifficulty.accuracy * boost.aggression,
       botDifficulty.minAccuracy,
       botDifficulty.maxAccuracy
     );
     const intendedHit = Math.random() < accuracy;
     const intendedTarget = intendedHit
       ? { x: target.x, y: target.y }
-      : { x: target.x + rand(-150, 150), y: target.y + rand(-150, 150) };
+      : { x: target.x + rand(-95, 95) / boost.aggression, y: target.y + rand(-95, 95) / boost.aggression };
     const shotAngle = Math.atan2(intendedTarget.y - enemy.y, intendedTarget.x - enemy.x);
     const shotDistance = Math.min(w.range, dist(enemy, intendedTarget));
     const surfaceImpact = traceSurfaceImpact(enemy, shotAngle, shotDistance);
@@ -2751,21 +2762,25 @@ function updateEnemies(dt) {
     if (!target) continue;
     e.tacticCd -= dt;
     if (e.tacticCd <= 0) {
-      if (Math.random() < .42) e.strafeDir *= -1;
-      if (dist(e, target) < 210 && Math.random() < .28 * difficulty().accuracy) {
-        e.guardTimer = rand(.32, .72);
+      const botDifficulty = difficulty();
+      const boost = teamBotBoost();
+      if (Math.random() < .5 + .14 * boost.aggression) e.strafeDir *= -1;
+      if (dist(e, target) < 230 && Math.random() < .18 * botDifficulty.accuracy) {
+        e.guardTimer = rand(.22, .52);
       }
-      e.tacticCd = rand(.65, 1.45);
+      e.tacticCd = rand(.38, 1.05) / boost.aggression;
     }
 
     const w = weapons[e.weaponRank - 1];
     const d = dist(e, target);
     const targetAngle = Math.atan2(target.y - e.y, target.x - e.x);
-    const idealRange = clamp(w.range * .48, 150, 420);
+    const boost = teamBotBoost();
+    const idealRange = clamp(w.range * (isTeamBattle() ? .38 : .48), 135, 390);
     const healthRatio = clamp(e.health / e.maxHealth, 0, 1);
     let radial = d > idealRange * 1.12 ? 1 : d < idealRange * .72 ? -1 : 0;
-    if (healthRatio < .3) radial = -1;
-    const strafe = d < idealRange * 1.6 ? e.strafeDir * .68 : 0;
+    if (healthRatio < .22) radial = -1;
+    if (isTeamBattle() && healthRatio > .55 && d > idealRange * .78) radial = 1;
+    const strafe = d < idealRange * 1.8 ? e.strafeDir * (.72 + .12 * boost.aggression) : 0;
     let moveX = Math.cos(targetAngle) * radial + Math.cos(targetAngle + Math.PI / 2) * strafe;
     let moveY = Math.sin(targetAngle) * radial + Math.sin(targetAngle + Math.PI / 2) * strafe;
 
