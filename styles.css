@@ -391,13 +391,14 @@ meter {
 .chat {
   position: absolute;
   left: 14px;
-  bottom: 14px;
-  width: min(440px, calc(100vw - 28px));
-  height: 142px;
+  top: 160px;
+  bottom: auto;
+  width: min(340px, calc(100vw - 28px));
+  height: 128px;
   border-radius: 8px;
   padding: 10px;
   overflow: hidden;
-  z-index: 3;
+  z-index: 8;
 }
 
 #chatLog {
@@ -693,7 +694,8 @@ meter {
   .chat {
     height: 98px;
     left: 8px;
-    bottom: 8px;
+    top: 198px;
+    bottom: auto;
     width: calc(100vw - 16px);
   }
 
