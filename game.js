@@ -681,6 +681,33 @@ function teamForEnemyIndex(index) {
   return "Red";
 }
 
+function teamSlotForEnemyIndex(index) {
+  if (state.mode.includes("4v4")) return index < 3 ? index + 1 : index - 3;
+  if (state.mode.includes("6v6")) return index < 5 ? index + 1 : index - 5;
+  if (isBedwars()) {
+    if (index < 2) return index + 1;
+    if (index < 5) return index - 2;
+    if (index < 8) return index - 5;
+    return index - 8;
+  }
+  return index;
+}
+
+function squadSpawnPoint(team, slot, size) {
+  const base = basePositionForTeam(team, size);
+  const forward = { x: Math.cos(base.angle), y: Math.sin(base.angle) };
+  const right = { x: -Math.sin(base.angle), y: Math.cos(base.angle) };
+  const columns = [-150, -75, 0, 75, 150, 225];
+  const rows = [0, 72, -72, 144, -144, 216];
+  const column = columns[slot % columns.length];
+  const row = rows[slot % rows.length];
+  return {
+    x: clamp(base.x + forward.x * (90 + Math.floor(slot / 2) * 42) + right.x * column, -size * .46, size * .46),
+    y: clamp(base.y + forward.y * (90 + Math.floor(slot / 2) * 42) + right.y * row, -size * .46, size * .46),
+    angle: base.angle
+  };
+}
+
 function playerIsPresent() {
   return state.player.alive !== false && state.playerRespawnTimer <= 0;
 }
@@ -1401,12 +1428,8 @@ function spawnEnemies(size) {
   state.enemies = [];
   for (let i = 0; i < modeEnemyCount(); i++) {
     const team = teamForEnemyIndex(i);
-    const teamBase = basePositionForTeam(team, size);
     const p = usesTeams()
-      ? {
-          x: teamBase.x + rand(-150, 150),
-          y: teamBase.y + rand(-210, 210)
-        }
+      ? squadSpawnPoint(team, teamSlotForEnemyIndex(i), size)
       : randomPoint(size);
     const rank = isRivalDuel()
       ? state.weaponRank
@@ -1418,7 +1441,7 @@ function spawnEnemies(size) {
       id: names[i],
       ...p,
       team,
-      angle: rand(0, Math.PI * 2),
+      angle: usesTeams() ? p.angle : rand(0, Math.PI * 2),
       health,
       maxHealth: health,
       stamina: 150,
@@ -1542,7 +1565,9 @@ function startSingleFight() {
 function modeObjectiveText() {
   if (isRivalDuel()) return "Win 5 rounds before your rival.";
   if (state.mode.includes("1v1")) return "Eliminate the rival before they eliminate you.";
-  if (isTeamBattle()) return "Fight with the Blue team and eliminate the Red team.";
+  if (isTeamBattle()) return state.mode.includes("6v6")
+    ? "Blue squad 6 vs Red squad 6. Fight with your 5 teammates and eliminate all 6 Red robots."
+    : "Blue squad 4 vs Red squad 4. Fight with your 3 teammates and eliminate all 4 Red robots.";
   if (isFreeForAll()) return "Be the last player standing.";
   if (isBedwars()) return "Protect the Blue bed, break the other beds, and eliminate every enemy team.";
   return "Eliminate every opponent.";
@@ -1567,6 +1592,9 @@ function resetMatch() {
     state.running = true;
     resetCombatants(true);
     addChat(`${state.mode} started on ${state.map.name} at ${state.difficulty} difficulty.`);
+    if (isTeamBattle()) {
+      addChat(`Teams spawned: Blue ${state.enemies.filter(enemy => enemy.team === "Blue").length + 1} vs Red ${state.enemies.filter(enemy => enemy.team === "Red").length}.`);
+    }
     addChat(modeObjectiveText());
   }
 }
@@ -5957,7 +5985,12 @@ function updateUi() {
   if (isRivalDuel()) {
     ui.enemyText.textContent = `Rival: ${state.enemies[0]?.id || "Waiting"}`;
   } else if (usesTeams()) {
-    ui.enemyText.textContent = `Enemies: ${aliveOpponents().length} | Allies: ${aliveAllies().length}`;
+    const blueTotal = state.enemies.filter(enemy => enemy.team === "Blue").length + 1;
+    const redTotal = state.enemies.filter(enemy => enemy.team === "Red").length;
+    const teamSummary = isTeamBattle()
+      ? `Blue ${blueTotal} vs Red ${redTotal}`
+      : `Enemies: ${aliveOpponents().length} | Allies: ${aliveAllies().length}`;
+    ui.enemyText.textContent = `${teamSummary} | Alive enemies ${aliveOpponents().length}`;
   } else {
     ui.enemyText.textContent = `Opponents: ${state.enemies.filter(e => e.alive).length}`;
   }
@@ -6177,7 +6210,12 @@ ui.modeSelect.addEventListener("change", () => {
   state.mode = ui.modeSelect.value;
   ui.overlayTitle.textContent = "Enter the arena";
   ui.overlayBody.textContent = modeObjectiveText();
-  addChat(`Mode set to ${state.mode}.`);
+  if (state.running || ui.overlay.classList.contains("hidden")) {
+    addChat(`Mode set to ${state.mode}. Restarting with the new teams.`);
+    resetMatch();
+  } else {
+    addChat(`Mode set to ${state.mode}.`);
+  }
   updateUi();
 });
 ui.difficultyButtons.forEach(button => {
