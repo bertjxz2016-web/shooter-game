@@ -48,6 +48,13 @@ button:hover {
 
 select {
   width: 100%;
+  background: rgba(18, 24, 32, 0.98);
+  color: #f6f7fb;
+}
+
+select option {
+  background: #111820;
+  color: #f6f7fb;
 }
 
 .shell {
