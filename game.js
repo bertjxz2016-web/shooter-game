@@ -461,6 +461,21 @@ const SUPPLY_CHEST_STYLES = {
   "High-rise office": { body: "#46545e", lid: "#5d6d77", band: "#252e34", hardware: "#89a8b8" }
 };
 
+function weaponProfile(rankOrWeapon = weapon()) {
+  const name = typeof rankOrWeapon === "number"
+    ? (weapons[rankOrWeapon - 1]?.name || "")
+    : (rankOrWeapon?.name || "");
+  const lower = name.toLowerCase();
+  if (lower.includes("slingshot") || lower.includes("crossbow")) return { type: "primitive", length: .62, bulk: .74, barrel: .58, color: "#3b2a1f", accent: "#b98d54", flash: "#ffd37a" };
+  if (lower.includes("shotgun")) return { type: "shotgun", length: .82, bulk: 1.12, barrel: .82, color: "#23292f", accent: "#b2773d", flash: "#ffbd58" };
+  if (lower.includes("pistol") || lower.includes("revolver")) return { type: "pistol", length: .56, bulk: .72, barrel: .5, color: "#1f272e", accent: "#59656d", flash: "#ffe38c" };
+  if (lower.includes("sniper") || lower.includes("dmr") || lower.includes("materiel") || lower.includes("railgun")) return { type: "marksman", length: 1.22, bulk: .94, barrel: 1.24, color: "#1b232a", accent: "#7d8b92", flash: "#d9f4ff" };
+  if (lower.includes("launcher") || lower.includes("rocket") || lower.includes("cannon") || lower.includes("beacon")) return { type: "heavy", length: 1.08, bulk: 1.34, barrel: 1.02, color: "#293239", accent: "#8a7250", flash: "#ff8055" };
+  if (lower.includes("laser") || lower.includes("plasma") || lower.includes("singularity")) return { type: "energy", length: 1.05, bulk: 1.05, barrel: 1.06, color: "#182432", accent: "#63d8ff", flash: "#79f2ff" };
+  if (lower.includes("smg") || lower.includes("minigun")) return { type: "smg", length: .78, bulk: .86, barrel: .74, color: "#1d252c", accent: "#68747c", flash: "#ffd678" };
+  return { type: "rifle", length: 1, bulk: 1, barrel: 1, color: "#202931", accent: "#73828a", flash: "#ffe28a" };
+}
+
 function createStarterInventory() {
   return [
     { name: "Apple", type: "food", count: 1, heal: 22 },
@@ -1220,16 +1235,18 @@ function chestContents(index) {
 function generateSupplyChests(size) {
   const buildings = mapBuildings();
   const exteriorIndices = isRivalDuel()
-    ? [0, 1, 2, 3]
-    : [0, 2, 5, 7, 9, 11, 13, 15];
+    ? [0, 1, 2, 3, 5, 7]
+    : [0, 1, 2, 4, 5, 7, 8, 9, 11, 12, 13, 15];
   const interiorIndices = isRivalDuel()
-    ? [0, 1, 2, 3]
-    : [1, 3, 4, 6, 8, 10, 12, 14];
+    ? [0, 1, 2, 3, 4, 6]
+    : [0, 1, 3, 4, 6, 7, 8, 10, 11, 12, 14, 15];
   const interiorSpots = [
-    { x: -196, y: 145 },
-    { x: 198, y: 148 },
-    { x: -202, y: 18 },
-    { x: 204, y: 24 }
+    { x: -210, y: 150, label: "locker" },
+    { x: 214, y: 148, label: "cooler" },
+    { x: -218, y: 22, label: "duffel" },
+    { x: 218, y: 28, label: "cabinet" },
+    { x: -118, y: -142, label: "shelf" },
+    { x: 122, y: -138, label: "crate" }
   ];
   state.chests = [];
 
@@ -1241,13 +1258,14 @@ function generateSupplyChests(size) {
     const tangentX = -outwardY;
     const tangentY = outwardX;
     const side = slot % 2 === 0 ? -1 : 1;
-    const hidingDistance = building.width * .58 + 42;
-    const sideOffset = building.width * (.17 + (slot % 3) * .04) * side;
+    const hidingDistance = building.width * .5 + 18;
+    const sideOffset = building.width * (.08 + (slot % 3) * .05) * side;
     state.chests.push({
       id: `outside-cache-${building.index}`,
       kind: "chest",
       location: "outside",
       buildingId: building.id,
+      stashType: slot % 4 === 0 ? "crate" : slot % 4 === 1 ? "duffel" : slot % 4 === 2 ? "cooler" : "locker",
       x: clamp(
         building.x + outwardX * hidingDistance + tangentX * sideOffset,
         -size * .46,
@@ -1258,10 +1276,41 @@ function generateSupplyChests(size) {
         -size * .46,
         size * .46
       ),
-      radius: 42,
-      height: 36,
+      radius: 52,
+      height: 42,
       opened: false,
       contents: chestContents(slot)
+    });
+  }
+
+  const fieldSpots = isRivalDuel()
+    ? [
+      { x: -size * .255, y: size * .14, stashType: "crate" },
+      { x: -size * .22, y: -size * .14, stashType: "duffel" },
+      { x: -size * .22, y: -size * .18, stashType: "cooler" },
+      { x: size * .22, y: size * .16, stashType: "crate" }
+    ]
+    : [
+      { x: -size * .24, y: size * .13, stashType: "crate" },
+      { x: -size * .16, y: -size * .14, stashType: "duffel" },
+      { x: -size * .08, y: -size * .2, stashType: "cooler" },
+      { x: size * .08, y: -size * .24, stashType: "locker" },
+      { x: -size * .31, y: -size * .04, stashType: "crate" },
+      { x: size * .32, y: -size * .02, stashType: "duffel" }
+    ];
+  for (const [slot, spot] of fieldSpots.entries()) {
+    state.chests.push({
+      id: `field-cache-${slot}`,
+      kind: "chest",
+      location: "outside",
+      buildingId: null,
+      stashType: spot.stashType,
+      x: spot.x,
+      y: spot.y,
+      radius: 58,
+      height: 46,
+      opened: false,
+      contents: chestContents(slot + exteriorIndices.length)
     });
   }
 
@@ -1273,10 +1322,11 @@ function generateSupplyChests(size) {
       kind: "chest",
       location: "interior",
       buildingId: building.id,
+      stashType: spot.label,
       x: spot.x,
       y: spot.y,
-      radius: 38,
-      height: 34,
+      radius: 54,
+      height: 42,
       opened: false,
       contents: chestContents(slot + exteriorIndices.length)
     });
@@ -1949,6 +1999,7 @@ function spawnSurfaceImpact(impact, incoming = false) {
     ...impact,
     area: impactAreaKey(),
     size: rand(incoming ? 4.2 : 4.8, incoming ? 6.2 : 7.2),
+    crackScale: rand(.75, 1.45),
     seed: Math.random() * 1000,
     rim: mixHexColors(surfaceColor, palette.rim, impact.material === "metal" ? .34 : .2),
     soot: mixHexColors(surfaceColor, "#050708", .72),
@@ -1969,7 +2020,7 @@ function spawnSurfaceImpact(impact, incoming = false) {
 }
 
 function spawnTracer(from, to, color, hit, incoming = false, worldShot = incoming, aimPitch = null) {
-  const lifetime = incoming ? .34 : .24;
+  const lifetime = incoming ? .44 : .32;
   state.tracers.push({
     from: { ...from },
     to: { ...to },
@@ -1980,7 +2031,7 @@ function spawnTracer(from, to, color, hit, incoming = false, worldShot = incomin
     aimPitch,
     life: lifetime,
     maxLife: lifetime,
-    width: incoming ? 4 : 5
+    width: incoming ? 5.5 : 6.2
   });
 }
 
@@ -2226,6 +2277,7 @@ function shoot() {
   state.ammo -= 1;
   state.player.shootCd = 1 / w.rate;
   playShotSound(state.weaponRank);
+  const profile = weaponProfile(w);
   const aimedTarget = findTargetInCrosshair(w.range);
   const aimAngle = state.player.angle + rand(-.018, .018);
   const surfaceImpact = traceSurfaceImpact(state.player, aimAngle, w.range, state.player.pitch);
@@ -2236,7 +2288,7 @@ function shoot() {
     y: state.player.y + Math.sin(state.player.angle) * 46 + Math.sin(state.player.angle + Math.PI / 2) * 14
   };
   const shotEnd = hit ? { x: hit.x, y: hit.y } : surfaceImpact;
-  spawnTracer(muzzle, shotEnd, hit ? "#ffe37a" : "#96e8ff", Boolean(hit), false, false, state.player.pitch);
+  spawnTracer(muzzle, shotEnd, hit ? profile.flash : "#aeefff", Boolean(hit), false, false, state.player.pitch);
   ejectCasing();
   state.recoil = Math.max(state.recoil, .34);
   state.muzzleFlash = .075;
@@ -2404,6 +2456,7 @@ function enemyShoot(enemy, target, dt) {
   const d = dist(enemy, target);
   const w = weapons[enemy.weaponRank - 1];
   if (d < w.range * .75 && enemy.shootCd <= 0) {
+    const profile = weaponProfile(w);
     enemy.shootCd = (rand(.65, 1.4) + 1 / w.rate) * botDifficulty.fireDelay;
     const rangeRatio = clamp(d / (w.range * .75), 0, 1);
     const fatiguePenalty = enemy.stamina < 25 ? .72 : 1;
@@ -2422,7 +2475,7 @@ function enemyShoot(enemy, target, dt) {
     const blocked = surfaceImpact.distance < shotDistance - 22;
     const didHit = intendedHit && !blocked;
     const shotTarget = didHit ? { x: target.x, y: target.y } : surfaceImpact;
-    spawnTracer(enemy, shotTarget, didHit ? "#ff7b72" : "#ffb86b", didHit, targetIsPlayer, true);
+    spawnTracer(enemy, shotTarget, didHit ? "#ff7b72" : profile.flash, didHit, targetIsPlayer, true);
     playShotSound(enemy.weaponRank, true);
     if (didHit) {
       spawnImpact(target.x, target.y, targetIsPlayer ? "#ff7b72" : "#ffd27a", 9);
@@ -3934,7 +3987,7 @@ function drawBulletMark(x, y, scale, mark, ground = false) {
   ctx.lineWidth = Math.max(.8, size * .075);
   for (let crackIndex = 0; crackIndex < 6; crackIndex += 1) {
     const crackAngle = hashNoise(crackIndex, mark.seed + 7) * Math.PI * 2;
-    const crackLength = size * (.95 + hashNoise(crackIndex, mark.seed + 13) * .65);
+    const crackLength = size * (.95 + hashNoise(crackIndex, mark.seed + 13) * .65) * (mark.crackScale || 1);
     ctx.beginPath();
     ctx.moveTo(Math.cos(crackAngle) * size * .48, Math.sin(crackAngle) * size * .48);
     ctx.lineTo(Math.cos(crackAngle) * crackLength, Math.sin(crackAngle) * crackLength);
@@ -5414,9 +5467,10 @@ function drawProp(x, y, scale, prop) {
 
 function drawSupplyChest(x, y, scale, chest) {
   const style = SUPPLY_CHEST_STYLES[state.map.name] || SUPPLY_CHEST_STYLES.Warehouse;
-  const width = clamp(82 * scale, 18, 108);
-  const height = clamp(chest.height * scale, 11, 52);
+  const width = clamp((chest.stashType === "locker" ? 72 : 104) * scale, 30, 148);
+  const height = clamp(chest.height * scale, 16, 66);
   const depth = height * .34;
+  const near = !chest.opened && dist(state.player, chest) < 150;
   ctx.save();
 
   ctx.fillStyle = "rgba(0, 0, 0, .42)";
@@ -5424,20 +5478,36 @@ function drawSupplyChest(x, y, scale, chest) {
   ctx.ellipse(x, y + depth * .18, width * .58, depth * .72, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = style.body;
-  ctx.fillRect(x - width / 2, y - height * .72, width, height * .72);
+  const left = x - width / 2;
+  const top = y - height * .82;
+  const bodyGradient = ctx.createLinearGradient(left, top, left + width, y);
+  bodyGradient.addColorStop(0, mixHexColors(style.body, "#ffffff", .14));
+  bodyGradient.addColorStop(.58, style.body);
+  bodyGradient.addColorStop(1, mixHexColors(style.body, "#050709", .38));
+  ctx.fillStyle = bodyGradient;
+  if (chest.stashType === "duffel") {
+    ctx.beginPath();
+    ctx.roundRect(left, y - height * .72, width, height * .62, height * .2);
+    ctx.fill();
+  } else if (chest.stashType === "locker") {
+    ctx.fillRect(left + width * .12, y - height * 1.28, width * .76, height * 1.18);
+  } else {
+    ctx.fillRect(left, y - height * .72, width, height * .72);
+  }
   ctx.fillStyle = mixHexColors(style.body, "#0b0f11", .42);
-  ctx.beginPath();
-  ctx.moveTo(x + width / 2, y - height * .72);
-  ctx.lineTo(x + width / 2 + depth, y - height * .9);
-  ctx.lineTo(x + width / 2 + depth, y - depth * .18);
-  ctx.lineTo(x + width / 2, y);
-  ctx.closePath();
-  ctx.fill();
+  if (chest.stashType !== "locker") {
+    ctx.beginPath();
+    ctx.moveTo(x + width / 2, y - height * .72);
+    ctx.lineTo(x + width / 2 + depth, y - height * .9);
+    ctx.lineTo(x + width / 2 + depth, y - depth * .18);
+    ctx.lineTo(x + width / 2, y);
+    ctx.closePath();
+    ctx.fill();
+  }
 
   if (chest.opened) {
     ctx.fillStyle = "#101518";
-    ctx.fillRect(x - width * .45, y - height * .72, width * .9, height * .2);
+    ctx.fillRect(x - width * .45, y - height * .72, width * .9, height * .22);
     ctx.fillStyle = style.lid;
     ctx.beginPath();
     ctx.moveTo(x - width * .5, y - height * .78);
@@ -5460,15 +5530,41 @@ function drawSupplyChest(x, y, scale, chest) {
   }
 
   ctx.fillStyle = style.band;
-  ctx.fillRect(x - width * .37, y - height * .96, width * .11, height * .9);
-  ctx.fillRect(x + width * .24, y - height * .9, width * .11, height * .84);
+  if (chest.stashType === "duffel") {
+    ctx.strokeStyle = style.band;
+    ctx.lineWidth = Math.max(2, height * .08);
+    ctx.beginPath();
+    ctx.arc(x, y - height * .72, width * .28, Math.PI, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillRect(x - width * .42, y - height * .43, width * .84, height * .08);
+  } else if (chest.stashType === "locker") {
+    ctx.fillRect(x - width * .08, y - height * 1.18, width * .05, height);
+    ctx.fillRect(x + width * .18, y - height * 1.12, width * .06, height * .18);
+  } else {
+    ctx.fillRect(x - width * .37, y - height * .96, width * .11, height * .9);
+    ctx.fillRect(x + width * .24, y - height * .9, width * .11, height * .84);
+  }
   ctx.fillStyle = style.hardware;
   ctx.fillRect(x - width * .08, y - height * .55, width * .16, height * .22);
+  if (!chest.opened) {
+    ctx.fillStyle = colorWithAlpha(style.hardware, near ? .95 : .72);
+    ctx.font = `800 ${clamp(10 * scale, 7, 12)}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.fillText("SUPPLY", x, y - height * .28);
+  }
   ctx.fillStyle = "rgba(255, 255, 255, .08)";
   ctx.fillRect(x - width * .44, y - height * .66, width * .72, Math.max(1, height * .08));
   ctx.strokeStyle = "rgba(5, 8, 10, .7)";
   ctx.lineWidth = Math.max(1, scale * 1.1);
-  ctx.strokeRect(x - width / 2, y - height * .72, width, height * .72);
+  ctx.strokeRect(chest.stashType === "locker" ? left + width * .12 : left, chest.stashType === "locker" ? y - height * 1.28 : y - height * .72, chest.stashType === "locker" ? width * .76 : width, chest.stashType === "locker" ? height * 1.18 : height * .72);
+  if (near) {
+    ctx.fillStyle = "rgba(0, 0, 0, .52)";
+    ctx.fillRect(x - width * .48, y - height * 1.42, width * .96, Math.max(16, height * .26));
+    ctx.fillStyle = "#eaf1e7";
+    ctx.font = `800 ${clamp(12 * scale, 9, 14)}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.fillText("E SEARCH", x, y - height * 1.24);
+  }
   ctx.restore();
 }
 
@@ -5710,6 +5806,7 @@ function drawEnemy(x, y, scale, enemy) {
 
 function drawWeapon(width, height) {
   const w = weapon();
+  const profile = weaponProfile(w);
   const moving = keys.has("w") || keys.has("a") || keys.has("s") || keys.has("d");
   const bob = moving && state.running ? Math.sin(state.time * 9) : 0;
   const swingProgress = state.meleeSwing > 0 ? 1 - state.meleeSwing / .3 : 0;
@@ -5717,83 +5814,123 @@ function drawWeapon(width, height) {
   const guardPose = state.player.guarding ? 1 : 0;
   const x = width * .64 + state.recoil * 26 + bob * 3 - meleePose * 112 - guardPose * 72;
   const y = height * .82 + state.recoil * 38 + Math.abs(bob) * 3 + meleePose * 42 - guardPose * 48;
+  const gunScale = clamp(width / 1180, .82, 1.2);
+  const barrelLength = 92 * profile.barrel * gunScale;
+  const bodyLength = 146 * profile.length * gunScale;
+  const bodyHeight = 48 * profile.bulk * gunScale;
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(-.1 - state.recoil * .09 + bob * .004 + meleePose * .76 + guardPose * .3);
   ctx.fillStyle = "rgba(0,0,0,.42)";
   ctx.beginPath();
-  ctx.moveTo(-82, -3);
-  ctx.lineTo(105, -3);
-  ctx.lineTo(112, 31);
-  ctx.lineTo(-58, 39);
+  ctx.moveTo(-bodyLength * .6, -3);
+  ctx.lineTo(bodyLength * .82 + barrelLength, -3);
+  ctx.lineTo(bodyLength * .92 + barrelLength, 34 * gunScale);
+  ctx.lineTo(-bodyLength * .46, 44 * gunScale);
   ctx.closePath();
   ctx.fill();
 
-  const receiver = ctx.createLinearGradient(0, -30, 0, 25);
-  receiver.addColorStop(0, "#4f5c68");
-  receiver.addColorStop(.26, "#252e37");
-  receiver.addColorStop(1, "#0d1319");
+  const receiver = ctx.createLinearGradient(0, -bodyHeight * .65, 0, bodyHeight * .55);
+  receiver.addColorStop(0, mixHexColors(profile.color, "#ffffff", .28));
+  receiver.addColorStop(.34, profile.color);
+  receiver.addColorStop(1, mixHexColors(profile.color, "#020407", .68));
   ctx.fillStyle = receiver;
   ctx.beginPath();
-  ctx.moveTo(-70, -29);
-  ctx.lineTo(73, -29);
-  ctx.lineTo(94, -13);
-  ctx.lineTo(75, 11);
-  ctx.lineTo(-54, 17);
-  ctx.lineTo(-78, 3);
+  ctx.moveTo(-bodyLength * .44, -bodyHeight * .62);
+  ctx.lineTo(bodyLength * .44, -bodyHeight * .62);
+  ctx.lineTo(bodyLength * .58, -bodyHeight * .22);
+  ctx.lineTo(bodyLength * .45, bodyHeight * .3);
+  ctx.lineTo(-bodyLength * .34, bodyHeight * .42);
+  ctx.lineTo(-bodyLength * .52, bodyHeight * .12);
   ctx.closePath();
   ctx.fill();
   ctx.strokeStyle = "rgba(255,255,255,.16)";
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = 1.5 * gunScale;
   ctx.stroke();
 
-  ctx.fillStyle = "#10171d";
-  ctx.fillRect(62, -23, 92, 17);
-  ctx.fillStyle = "#707c84";
-  ctx.fillRect(72, -20, 82, 4);
+  ctx.fillStyle = "#0a0f13";
+  ctx.fillRect(bodyLength * .36, -bodyHeight * .45, barrelLength, Math.max(8, bodyHeight * .25));
+  ctx.fillStyle = profile.accent;
+  ctx.globalAlpha = .74;
+  ctx.fillRect(bodyLength * .43, -bodyHeight * .37, barrelLength * .82, Math.max(2, bodyHeight * .06));
+  ctx.globalAlpha = 1;
   ctx.fillStyle = "#080c10";
-  ctx.fillRect(146, -25, 26, 21);
-  ctx.fillStyle = "#313b44";
-  ctx.fillRect(-40, -37, 67, 9);
+  ctx.fillRect(bodyLength * .34 + barrelLength, -bodyHeight * .5, 30 * gunScale, Math.max(13, bodyHeight * .32));
+  ctx.fillStyle = mixHexColors(profile.color, "#ffffff", .18);
+  ctx.fillRect(-bodyLength * .28, -bodyHeight * .82, bodyLength * .46, Math.max(7, bodyHeight * .13));
   ctx.fillStyle = "#151c23";
-  ctx.fillRect(-31, 9, 31, 61);
-  ctx.fillStyle = "#2f3941";
+  ctx.fillRect(-bodyLength * .22, bodyHeight * .18, bodyLength * .18, 62 * gunScale);
+  if (profile.type !== "pistol" && profile.type !== "primitive") {
+    ctx.fillStyle = "#111820";
+    ctx.beginPath();
+    ctx.moveTo(-bodyLength * .46, -bodyHeight * .18);
+    ctx.lineTo(-bodyLength * .82, bodyHeight * .04);
+    ctx.lineTo(-bodyLength * .72, bodyHeight * .42);
+    ctx.lineTo(-bodyLength * .38, bodyHeight * .22);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.fillStyle = mixHexColors(profile.accent, "#120d08", .24);
   ctx.beginPath();
-  ctx.moveTo(8, 8);
-  ctx.lineTo(40, 7);
-  ctx.lineTo(31, 57);
-  ctx.lineTo(4, 54);
+  ctx.moveTo(bodyLength * .08, bodyHeight * .18);
+  ctx.lineTo(bodyLength * .31, bodyHeight * .15);
+  ctx.lineTo(bodyLength * .24, bodyHeight * (profile.type === "shotgun" ? .84 : 1.18));
+  ctx.lineTo(bodyLength * .05, bodyHeight * 1.1);
   ctx.closePath();
   ctx.fill();
-  ctx.fillStyle = "#9d7937";
-  ctx.fillRect(14, 12, 15, 39);
+  if (profile.type === "marksman" || profile.type === "energy") {
+    ctx.strokeStyle = "#111820";
+    ctx.lineWidth = 7 * gunScale;
+    ctx.beginPath();
+    ctx.moveTo(-bodyLength * .18, -bodyHeight * .92);
+    ctx.lineTo(bodyLength * .34, -bodyHeight * .92);
+    ctx.stroke();
+    ctx.fillStyle = profile.type === "energy" ? colorWithAlpha(profile.accent, .7) : "#0b1116";
+    ctx.fillRect(-bodyLength * .08, -bodyHeight * 1.08, bodyLength * .3, bodyHeight * .22);
+  }
+  if (profile.type === "heavy") {
+    ctx.strokeStyle = "#0b1014";
+    ctx.lineWidth = 17 * gunScale;
+    ctx.beginPath();
+    ctx.moveTo(bodyLength * .28, -bodyHeight * .2);
+    ctx.lineTo(bodyLength * .5 + barrelLength, -bodyHeight * .2);
+    ctx.stroke();
+  }
+  if (profile.type === "primitive") {
+    ctx.strokeStyle = "#2c1d14";
+    ctx.lineWidth = 8 * gunScale;
+    ctx.beginPath();
+    ctx.arc(-bodyLength * .2, -bodyHeight * .08, bodyHeight * .6, -.9, .9);
+    ctx.stroke();
+  }
   ctx.fillStyle = "#171e25";
-  ctx.fillRect(-84, -18, 24, 32);
+  ctx.fillRect(-bodyLength * .58, -bodyHeight * .33, bodyLength * .16, bodyHeight * .62);
   ctx.fillStyle = "rgba(255,255,255,.23)";
-  ctx.fillRect(-55, -23, 91, 3);
+  ctx.fillRect(-bodyLength * .34, -bodyHeight * .46, bodyLength * .64, Math.max(2, bodyHeight * .05));
   ctx.fillStyle = "#d9e1ea";
-  ctx.font = "700 12px sans-serif";
-  ctx.fillText(w.name, -62, -38);
+  ctx.font = `700 ${Math.round(12 * gunScale)}px sans-serif`;
+  ctx.fillText(w.name, -bodyLength * .44, -bodyHeight * .86);
 
   if (state.muzzleFlash > 0) {
     const alpha = clamp(state.muzzleFlash / .075, 0, 1);
+    const muzzleX = bodyLength * .36 + barrelLength + 28 * gunScale;
     ctx.globalCompositeOperation = "lighter";
-    const flash = ctx.createRadialGradient(176, -15, 0, 176, -15, 82);
+    const flash = ctx.createRadialGradient(muzzleX, -bodyHeight * .24, 0, muzzleX, -bodyHeight * .24, 92 * gunScale);
     flash.addColorStop(0, `rgba(255,255,255,${alpha})`);
-    flash.addColorStop(.22, `rgba(255,226,106,${alpha})`);
+    flash.addColorStop(.2, colorWithAlpha(profile.flash, alpha));
     flash.addColorStop(1, "rgba(255,111,64,0)");
     ctx.fillStyle = flash;
     ctx.beginPath();
-    ctx.arc(176, -15, 82, 0, Math.PI * 2);
+    ctx.arc(muzzleX, -bodyHeight * .24, 92 * gunScale, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = `rgba(255, 244, 190, ${alpha})`;
     ctx.beginPath();
-    ctx.moveTo(167, -15);
-    ctx.lineTo(222, -47);
-    ctx.lineTo(204, -16);
-    ctx.lineTo(230, 10);
-    ctx.lineTo(194, -2);
-    ctx.lineTo(205, 31);
+    ctx.moveTo(muzzleX - 8 * gunScale, -bodyHeight * .24);
+    ctx.lineTo(muzzleX + 72 * gunScale, -bodyHeight * .82);
+    ctx.lineTo(muzzleX + 48 * gunScale, -bodyHeight * .24);
+    ctx.lineTo(muzzleX + 86 * gunScale, bodyHeight * .22);
+    ctx.lineTo(muzzleX + 35 * gunScale, bodyHeight * .02);
+    ctx.lineTo(muzzleX + 52 * gunScale, bodyHeight * .62);
     ctx.closePath();
     ctx.fill();
   }
@@ -5917,7 +6054,7 @@ function renderShop() {
     const row = document.createElement("div");
     row.className = "shop-item";
     const owned = gun.rank <= state.weaponRank;
-    row.innerHTML = `<div><strong>${gun.rank}. ${gun.name}</strong><small>${gun.damage} XP damage | ${gun.range} range | ${gun.diamonds || "Free"} diamonds | level ${gun.level}</small></div>`;
+    row.innerHTML = `<div><strong>${gun.rank}. ${gun.name}</strong><small>${gun.damage} damage | ${gun.magazine} mag | ${gun.range} range | ${gun.diamonds || "Free"} diamonds | level ${gun.level}</small></div>`;
     const btn = document.createElement("button");
     btn.textContent = owned ? (gun.rank === state.weaponRank ? "Equipped" : "Equip") : "Buy";
     btn.addEventListener("click", () => buyWeapon(gun));
