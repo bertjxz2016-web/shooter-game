@@ -2339,9 +2339,11 @@ function shoot() {
     const hitBed = hit.kind === "bed";
     const guarded = !hitBed && botIsGuardingAgainst(hit, state.player);
     const enemyArmor = hitBed ? armors[0] : armors[hit.armor - 1] || armors[0];
+    // The number shown in the loadout is the actual base hit damage. Armor and
+    // guarding are the only reductions applied to a normal body hit.
     const damage = hitBed
       ? w.damage * 5.5
-      : w.damage * 4.5 * (1 - enemyArmor.protection * .55) * (guarded ? .32 : 1);
+      : w.damage * (1 - enemyArmor.protection) * (guarded ? .32 : 1);
     if (hitBed) {
       damageBed(hit, damage, "You");
     } else {
@@ -2524,12 +2526,13 @@ function enemyShoot(enemy, target, dt) {
     if (didHit) {
       spawnImpact(target.x, target.y, targetIsPlayer ? "#ff7b72" : "#ffd27a", 9);
       if (targetIsPlayer) {
-        takeDamage(w.damage * rand(.22, .44) * botDifficulty.damage, enemy.id);
+        // Bot shots use the same weapon damage contract as player shots.
+        takeDamage(w.damage, enemy.id);
       } else if (targetIsBed) {
         damageBed(target, w.damage * rand(.9, 1.35) * botDifficulty.damage, enemy.id);
       } else {
         const targetArmor = armors[target.armor - 1] || armors[0];
-        const damage = w.damage * rand(.28, .52) * (1 - targetArmor.protection * .55) * botDifficulty.damage;
+        const damage = w.damage * (1 - targetArmor.protection);
         target.health -= damage;
         spawnFloatingText(target.x, target.y, damage.toFixed(0), "#ffb86b", .65, 44);
         if (target.health > 0) {
