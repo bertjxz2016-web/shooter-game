@@ -450,6 +450,16 @@ const TEAM_COLORS = {
   Yellow: "#c49a35",
   Green: "#43865a"
 };
+const SUPPLY_CHEST_STYLES = {
+  "Warehouse": { body: "#485158", lid: "#59636a", band: "#262d31", hardware: "#a4adb0" },
+  "Forest": { body: "#4e4935", lid: "#625a3d", band: "#29291f", hardware: "#8e957a" },
+  "Small city block": { body: "#565d62", lid: "#687176", band: "#2d3337", hardware: "#a7afb0" },
+  "Space station": { body: "#3c4d5d", lid: "#52687a", band: "#172331", hardware: "#68b8cb" },
+  "Desert military base": { body: "#5d5d4f", lid: "#72705c", band: "#30332d", hardware: "#a99e6c" },
+  "Abandoned village": { body: "#51463c", lid: "#67584a", band: "#2d2722", hardware: "#8b7965" },
+  "Mall": { body: "#6b6d6e", lid: "#85898a", band: "#373b3d", hardware: "#a9b0b1" },
+  "High-rise office": { body: "#46545e", lid: "#5d6d77", band: "#252e34", hardware: "#89a8b8" }
+};
 
 function createStarterInventory() {
   return [
@@ -501,6 +511,7 @@ const state = {
   beds: [],
   traps: [],
   props: [],
+  chests: [],
   tracers: [],
   particles: [],
   bulletMarks: [],
@@ -1084,6 +1095,69 @@ function toggleBuilding() {
   else enterBuilding();
 }
 
+function visibleSupplyChests() {
+  return state.chests.filter(chest => (
+    state.insideBuilding
+      ? chest.location === "interior" && chest.buildingId === state.currentBuildingId
+      : chest.location === "outside"
+  ));
+}
+
+function nearbySupplyChest(maxDistance = 88) {
+  let nearest = null;
+  let nearestDistance = maxDistance;
+  for (const chest of visibleSupplyChests()) {
+    if (chest.opened) continue;
+    const distance = dist(state.player, chest);
+    if (distance >= nearestDistance) continue;
+    nearest = chest;
+    nearestDistance = distance;
+  }
+  return nearest;
+}
+
+function addInventoryItem(item) {
+  const matching = state.inventory.find(entry => entry?.name === item.name);
+  if (matching) {
+    matching.count += item.count;
+    return true;
+  }
+  const emptyIndex = state.inventory.findIndex(entry => entry === null);
+  if (emptyIndex < 0) return false;
+  state.inventory[emptyIndex] = { ...item };
+  return true;
+}
+
+function searchSupplyChest() {
+  if (!state.running || !playerIsPresent()) return false;
+  const chest = nearbySupplyChest();
+  if (!chest) return false;
+  const neededSlots = new Set(
+    chest.contents
+      .filter(item => !state.inventory.some(entry => entry?.name === item.name))
+      .map(item => item.name)
+  ).size;
+  const emptySlots = state.inventory.filter(entry => entry === null).length;
+  if (neededSlots > emptySlots) {
+    addChat("Your inventory is full. Use an item before searching this chest.");
+    return true;
+  }
+  chest.contents.forEach(addInventoryItem);
+  const found = chest.contents.map(item => `${item.name} x${item.count}`).join(" and ");
+  chest.contents = [];
+  chest.opened = true;
+  state.shake = Math.max(state.shake, .06);
+  spawnFloatingText(chest.x, chest.y, "SUPPLIES FOUND", "#d9e2d4", 1.05, 62);
+  addChat(`You searched a hidden supply chest and found ${found}.`);
+  renderInventory();
+  return true;
+}
+
+function interact() {
+  if (searchSupplyChest()) return;
+  toggleBuilding();
+}
+
 function resize() {
   const dpr = window.devicePixelRatio || 1;
   canvas.width = Math.floor(canvas.clientWidth * dpr);
@@ -1129,6 +1203,82 @@ function generateProps(size) {
       name: names[i % names.length],
       type,
       tint: i % 2 ? state.map.prop : state.map.wall
+    });
+  }
+}
+
+function chestContents(index) {
+  const food = index % 2 === 0
+    ? { name: "Apple", type: "food", count: 1, heal: 22 }
+    : { name: "Sandwich", type: "food", count: 1, heal: 36 };
+  return [
+    { name: "Water", type: "water", count: 1 },
+    food
+  ];
+}
+
+function generateSupplyChests(size) {
+  const buildings = mapBuildings();
+  const exteriorIndices = isRivalDuel()
+    ? [0, 1, 2, 3]
+    : [0, 2, 5, 7, 9, 11, 13, 15];
+  const interiorIndices = isRivalDuel()
+    ? [0, 1, 2, 3]
+    : [1, 3, 4, 6, 8, 10, 12, 14];
+  const interiorSpots = [
+    { x: -196, y: 145 },
+    { x: 198, y: 148 },
+    { x: -202, y: 18 },
+    { x: 204, y: 24 }
+  ];
+  state.chests = [];
+
+  for (const [slot, buildingIndex] of exteriorIndices.entries()) {
+    const building = buildings[buildingIndex % buildings.length];
+    const distanceFromCenter = Math.hypot(building.x, building.y) || 1;
+    const outwardX = building.x / distanceFromCenter;
+    const outwardY = building.y / distanceFromCenter;
+    const tangentX = -outwardY;
+    const tangentY = outwardX;
+    const side = slot % 2 === 0 ? -1 : 1;
+    const hidingDistance = building.width * .58 + 42;
+    const sideOffset = building.width * (.17 + (slot % 3) * .04) * side;
+    state.chests.push({
+      id: `outside-cache-${building.index}`,
+      kind: "chest",
+      location: "outside",
+      buildingId: building.id,
+      x: clamp(
+        building.x + outwardX * hidingDistance + tangentX * sideOffset,
+        -size * .46,
+        size * .46
+      ),
+      y: clamp(
+        building.y + outwardY * hidingDistance + tangentY * sideOffset,
+        -size * .46,
+        size * .46
+      ),
+      radius: 42,
+      height: 36,
+      opened: false,
+      contents: chestContents(slot)
+    });
+  }
+
+  for (const [slot, buildingIndex] of interiorIndices.entries()) {
+    const building = buildings[buildingIndex % buildings.length];
+    const spot = interiorSpots[(building.index + slot) % interiorSpots.length];
+    state.chests.push({
+      id: `inside-cache-${building.index}`,
+      kind: "chest",
+      location: "interior",
+      buildingId: building.id,
+      x: spot.x,
+      y: spot.y,
+      radius: 38,
+      height: 34,
+      opened: false,
+      contents: chestContents(slot + exteriorIndices.length)
     });
   }
 }
@@ -1280,6 +1430,7 @@ function resetCombatants(regenerateArena = true) {
   state.muzzleFlash = 0;
   state.damageArc = { life: 0, angle: 0 };
   if (regenerateArena) generateProps(size);
+  generateSupplyChests(size);
   if (isRivalDuel()) {
     generateTraps(size);
   } else if (regenerateArena) {
@@ -1726,8 +1877,8 @@ function traceSurfaceImpact(origin, angle, range, pitch = 0) {
   }
 
   const obstacles = state.insideBuilding
-    ? interiorProps()
-    : [...state.props, ...mapBuildings()];
+    ? [...interiorProps(), ...visibleSupplyChests()]
+    : [...state.props, ...mapBuildings(), ...visibleSupplyChests()];
   for (const object of obstacles) {
     const radius = object.radius || object.width * .42 || 34;
     const objectDistance = rayCircleDistance(origin, directionX, directionY, object, radius, distance);
@@ -2906,6 +3057,24 @@ function drawSky(width, horizon, theme) {
 }
 
 function drawGroundSurface(width, height, horizon, theme) {
+  if (theme.scene === "mall") {
+    const tileFloor = ctx.createLinearGradient(0, horizon, 0, height);
+    tileFloor.addColorStop(0, "#afb2af");
+    tileFloor.addColorStop(.18, "#8f9492");
+    tileFloor.addColorStop(.62, "#555b5c");
+    tileFloor.addColorStop(1, "#252b2e");
+    ctx.fillStyle = tileFloor;
+    ctx.fillRect(0, horizon, width, height - horizon);
+    ctx.fillStyle = "rgba(255, 242, 211, .055)";
+    ctx.beginPath();
+    ctx.moveTo(width * .4, horizon);
+    ctx.lineTo(width * .6, horizon);
+    ctx.lineTo(width * .88, height);
+    ctx.lineTo(width * .12, height);
+    ctx.closePath();
+    ctx.fill();
+    return;
+  }
   const horizonGround = mixHexColors(theme.skyHorizon, theme.groundFar, .68);
   const middleGround = mixHexColors(theme.groundFar, state.map.ground, .62);
   const ground = ctx.createLinearGradient(0, horizon, 0, height);
@@ -3144,6 +3313,42 @@ function drawDistantScenery(width, horizon, theme) {
     }
     ctx.fillStyle = "rgba(255, 244, 205, .28)";
     for (let x = 28; x < width; x += 138) ctx.fillRect(x, 24, 74, 8);
+    const balconyY = horizon * .52;
+    ctx.fillStyle = "rgba(34, 42, 46, .92)";
+    ctx.fillRect(0, balconyY - 18, width, 18);
+    ctx.fillStyle = "rgba(191, 204, 204, .28)";
+    ctx.fillRect(0, balconyY, width, 5);
+    ctx.strokeStyle = "rgba(222, 231, 228, .28)";
+    ctx.lineWidth = 2;
+    for (let x = -40; x < width + 40; x += 54) {
+      ctx.beginPath();
+      ctx.moveTo(x, balconyY - 17);
+      ctx.lineTo(x, balconyY);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "rgba(21, 28, 32, .82)";
+    for (let x = 18; x < width; x += 136) {
+      ctx.fillRect(x, balconyY - 78, 104, 58);
+      ctx.fillStyle = "rgba(172, 211, 216, .24)";
+      ctx.fillRect(x + 6, balconyY - 72, 92, 46);
+      ctx.fillStyle = "rgba(21, 28, 32, .82)";
+    }
+    ctx.strokeStyle = "rgba(87, 94, 96, .92)";
+    ctx.lineWidth = 13;
+    ctx.beginPath();
+    ctx.moveTo(width * .14, horizon + 10);
+    ctx.lineTo(width * .31, balconyY - 3);
+    ctx.moveTo(width * .86, horizon + 10);
+    ctx.lineTo(width * .69, balconyY - 3);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(219, 226, 223, .3)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(width * .14, horizon + 4);
+    ctx.lineTo(width * .31, balconyY - 9);
+    ctx.moveTo(width * .86, horizon + 4);
+    ctx.lineTo(width * .69, balconyY - 9);
+    ctx.stroke();
     drawBuildingLine(
       width,
       horizon,
@@ -3527,10 +3732,18 @@ function drawBuildingInterior(width, height, horizon, building) {
 
 function drawBuildingInteraction(width, height) {
   if (!state.running) return;
-  const available = state.insideBuilding ? nearInteriorExit() : nearExteriorEntrance();
-  if (!available) return;
+  const chest = nearbySupplyChest();
+  const buildingAvailable = state.insideBuilding ? nearInteriorExit() : nearExteriorEntrance();
+  if (!chest && !buildingAvailable) return;
   const building = activeBuilding();
-  const label = state.insideBuilding ? "EXIT" : `ENTER ${building.name.toUpperCase()}`;
+  const label = chest
+    ? "SEARCH SUPPLY CHEST"
+    : state.insideBuilding
+      ? "EXIT"
+      : `ENTER ${building.name.toUpperCase()}`;
+  const accent = chest
+    ? (SUPPLY_CHEST_STYLES[state.map.name] || SUPPLY_CHEST_STYLES.Warehouse).hardware
+    : building.accent;
   ctx.save();
   ctx.font = "700 14px sans-serif";
   const promptWidth = clamp(ctx.measureText(label).width + 72, 142, Math.min(280, width * .58));
@@ -3539,10 +3752,10 @@ function drawBuildingInteraction(width, height) {
   const y = height * .72;
   ctx.fillStyle = "rgba(7, 11, 14, .84)";
   ctx.fillRect(x, y, promptWidth, promptHeight);
-  ctx.strokeStyle = building.accent;
+  ctx.strokeStyle = accent;
   ctx.lineWidth = 1.5;
   ctx.strokeRect(x, y, promptWidth, promptHeight);
-  ctx.fillStyle = building.accent;
+  ctx.fillStyle = accent;
   ctx.fillRect(x + 7, y + 6, 29, 28);
   ctx.fillStyle = "#10161b";
   ctx.textAlign = "center";
@@ -3597,6 +3810,9 @@ function drawSprites(width, height, horizon) {
     for (const trap of state.traps) if (trap.active) sprites.push({ kind: "trap", obj: trap, depth: project(trap).z });
     for (const bed of state.beds) if (bed.alive) sprites.push({ kind: "bed", obj: bed, depth: project(bed).z });
   }
+  for (const chest of visibleSupplyChests()) {
+    sprites.push({ kind: "chest", obj: chest, depth: project(chest).z });
+  }
   for (const mark of state.bulletMarks) {
     if (mark.area === impactAreaKey() && mark.surface !== "ground") {
       sprites.push({ kind: "bulletMark", obj: mark, depth: project(mark).z });
@@ -3626,6 +3842,7 @@ function drawSprites(width, height, horizon) {
     if (sprite.kind === "prop") drawProp(screenX, base, scale, sprite.obj);
     if (sprite.kind === "trap") drawTrap(screenX, base, scale, sprite.obj);
     if (sprite.kind === "bed") drawBed(screenX, base, scale, sprite.obj);
+    if (sprite.kind === "chest") drawSupplyChest(screenX, base, scale, sprite.obj);
     if (sprite.kind === "enemy") drawEnemy(screenX, base, scale, sprite.obj);
   }
 
@@ -5195,6 +5412,66 @@ function drawProp(x, y, scale, prop) {
   ctx.globalAlpha = 1;
 }
 
+function drawSupplyChest(x, y, scale, chest) {
+  const style = SUPPLY_CHEST_STYLES[state.map.name] || SUPPLY_CHEST_STYLES.Warehouse;
+  const width = clamp(82 * scale, 18, 108);
+  const height = clamp(chest.height * scale, 11, 52);
+  const depth = height * .34;
+  ctx.save();
+
+  ctx.fillStyle = "rgba(0, 0, 0, .42)";
+  ctx.beginPath();
+  ctx.ellipse(x, y + depth * .18, width * .58, depth * .72, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = style.body;
+  ctx.fillRect(x - width / 2, y - height * .72, width, height * .72);
+  ctx.fillStyle = mixHexColors(style.body, "#0b0f11", .42);
+  ctx.beginPath();
+  ctx.moveTo(x + width / 2, y - height * .72);
+  ctx.lineTo(x + width / 2 + depth, y - height * .9);
+  ctx.lineTo(x + width / 2 + depth, y - depth * .18);
+  ctx.lineTo(x + width / 2, y);
+  ctx.closePath();
+  ctx.fill();
+
+  if (chest.opened) {
+    ctx.fillStyle = "#101518";
+    ctx.fillRect(x - width * .45, y - height * .72, width * .9, height * .2);
+    ctx.fillStyle = style.lid;
+    ctx.beginPath();
+    ctx.moveTo(x - width * .5, y - height * .78);
+    ctx.lineTo(x - width * .42, y - height * 1.38);
+    ctx.lineTo(x + width * .48, y - height * 1.18);
+    ctx.lineTo(x + width * .5, y - height * .72);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = colorWithAlpha(style.hardware, .58);
+    ctx.stroke();
+  } else {
+    ctx.fillStyle = style.lid;
+    ctx.beginPath();
+    ctx.moveTo(x - width * .52, y - height * .72);
+    ctx.lineTo(x - width * .4, y - height * 1.03);
+    ctx.lineTo(x + width * .6, y - height * .94);
+    ctx.lineTo(x + width * .5, y - height * .72);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.fillStyle = style.band;
+  ctx.fillRect(x - width * .37, y - height * .96, width * .11, height * .9);
+  ctx.fillRect(x + width * .24, y - height * .9, width * .11, height * .84);
+  ctx.fillStyle = style.hardware;
+  ctx.fillRect(x - width * .08, y - height * .55, width * .16, height * .22);
+  ctx.fillStyle = "rgba(255, 255, 255, .08)";
+  ctx.fillRect(x - width * .44, y - height * .66, width * .72, Math.max(1, height * .08));
+  ctx.strokeStyle = "rgba(5, 8, 10, .7)";
+  ctx.lineWidth = Math.max(1, scale * 1.1);
+  ctx.strokeRect(x - width / 2, y - height * .72, width, height * .72);
+  ctx.restore();
+}
+
 function drawBed(x, y, scale, bed) {
   const width = clamp(112 * scale, 24, 150);
   const height = clamp(48 * scale, 14, 70);
@@ -5738,7 +6015,7 @@ window.addEventListener("keydown", event => {
   if (key === "f") shoot();
   if (key === "q" && !event.repeat) playerDash();
   if (key === "v" && !event.repeat) meleeAttack();
-  if (key === "e" && !event.repeat) toggleBuilding();
+  if (key === "e" && !event.repeat) interact();
   if ([" ", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(key)) event.preventDefault();
 });
 window.addEventListener("keyup", event => keys.delete(event.key.toLowerCase()));
